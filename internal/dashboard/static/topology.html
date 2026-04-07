@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Ops Agent - Topology</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0f1117; color:#e4e6f0; font-family:system-ui,sans-serif; overflow:hidden; }
+.header { display:flex; align-items:center; justify-content:space-between; padding:12px 24px; background:#1a1d27; border-bottom:1px solid #2a2e3d; }
+.header h1 { font-size:16px; }
+.header a { color:#6c5ce7; text-decoration:none; font-size:13px; }
+#canvas { width:100vw; height:calc(100vh - 48px); }
+.legend { position:fixed; bottom:16px; left:16px; background:#1a1d27; border:1px solid #2a2e3d; border-radius:8px; padding:12px; font-size:11px; }
+.legend-item { display:flex; align-items:center; gap:6px; padding:2px 0; }
+.legend-dot { width:10px; height:10px; border-radius:50%; }
+.tooltip { position:fixed; background:#1a1d27; border:1px solid #2a2e3d; border-radius:8px; padding:10px 14px; font-size:12px; pointer-events:none; display:none; max-width:300px; box-shadow:0 4px 20px rgba(0,0,0,0.5); z-index:100; }
+.tooltip .label { font-weight:600; margin-bottom:4px; }
+.tooltip .detail { color:#8b8fa3; font-size:11px; }
+svg text { fill:#8b8fa3; font-size:10px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>System Topology — Live Traffic Map</h1>
+  <a href="/">Back to Dashboard</a>
+</div>
+<svg id="canvas"></svg>
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#6c5ce7"></div> Function</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ff7b47"></div> Redis Key</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#3366ff"></div> MySQL Table</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#00d68f"></div> HTTP Route</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ffaa00"></div> Cron Job</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ff3d71"></div> Metric (anomaly)</div>
+</div>
+<div class="tooltip" id="tooltip"></div>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+const colors = {
+  function:'#6c5ce7', redis_key:'#ff7b47', sql_table:'#3366ff',
+  http_route:'#00d68f', cron_job:'#ffaa00', metric:'#ff3d71'
+};
+const sizes = {
+  function:6, redis_key:8, sql_table:8, http_route:10, cron_job:7, metric:7
+};
+
+const svg = d3.select('#canvas');
+const width = window.innerWidth;
+const height = window.innerHeight - 48;
+svg.attr('viewBox', [0, 0, width, height]);
+
+// Arrow marker
+svg.append('defs').append('marker')
+  .attr('id','arrow').attr('viewBox','0 -5 10 10')
+  .attr('refX',20).attr('refY',0).attr('markerWidth',6).attr('markerHeight',6)
+  .attr('orient','auto')
+  .append('path').attr('d','M0,-5L10,0L0,5').attr('fill','#3a3e5d');
+
+const g = svg.append('g');
+
+// Zoom
+svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => g.attr('transform', e.transform)));
+
+const tooltip = document.getElementById('tooltip');
+
+async function loadGraph() {
+  const resp = await fetch('/api/causal/graph');
+  const data = await resp.json();
+  if (!data.nodes || !data.edges) return;
+
+  const nodes = data.nodes.map(n => ({
+    id: n.id, type: n.type, name: n.name, file: n.file, line: n.line,
+    meta: n.metadata || {},
+    r: sizes[n.type] || 6,
+    color: colors[n.type] || '#6c5ce7'
+  }));
+
+  const nodeMap = {};
+  nodes.forEach(n => nodeMap[n.id] = n);
+
+  const links = data.edges.filter(e => nodeMap[e.from] && nodeMap[e.to]).map(e => ({
+    source: e.from, target: e.to, type: e.type, weight: e.weight || 0.5
+  }));
+
+  const sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id).distance(80))
+    .force('charge', d3.forceManyBody().strength(-200))
+    .force('center', d3.forceCenter(width/2, height/2))
+    .force('collision', d3.forceCollide().radius(d => d.r + 4));
+
+  const link = g.selectAll('.link').data(links).join('line')
+    .attr('class','link')
+    .attr('stroke', d => d.type === 'writes' ? '#ff7b47' : '#2a2e3d')
+    .attr('stroke-width', d => Math.max(d.weight * 2, 0.5))
+    .attr('stroke-opacity', 0.6)
+    .attr('marker-end','url(#arrow)');
+
+  const node = g.selectAll('.node').data(nodes).join('g')
+    .attr('class','node')
+    .call(d3.drag()
+      .on('start', (e,d) => { if(!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on('drag', (e,d) => { d.fx=e.x; d.fy=e.y; })
+      .on('end', (e,d) => { if(!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; })
+    );
+
+  node.append('circle')
+    .attr('r', d => d.r)
+    .attr('fill', d => d.meta.triggered === 'true' ? '#ff3d71' : d.color)
+    .attr('stroke', d => d.meta.triggered === 'true' ? '#ff3d71' : 'none')
+    .attr('stroke-width', d => d.meta.triggered === 'true' ? 3 : 0)
+    .attr('opacity', 0.9);
+
+  // Glow effect for anomaly nodes
+  node.filter(d => d.meta.triggered === 'true').append('circle')
+    .attr('r', d => d.r + 6)
+    .attr('fill','none').attr('stroke','#ff3d71').attr('stroke-width',1).attr('opacity',0.3);
+
+  node.append('text')
+    .text(d => d.name.length > 20 ? d.name.slice(0,20)+'...' : d.name)
+    .attr('dx', d => d.r + 4).attr('dy', 3)
+    .attr('font-size','10px');
+
+  node.on('mouseover', (e, d) => {
+    let html = `<div class="label">${d.name}</div>`;
+    html += `<div class="detail">Type: ${d.type}</div>`;
+    if (d.file) html += `<div class="detail">File: ${d.file}:${d.line}</div>`;
+    if (d.meta.value) html += `<div class="detail">Value: ${d.meta.value}</div>`;
+    if (d.meta.pct_of_total) html += `<div class="detail">CPU: ${d.meta.pct_of_total}</div>`;
+    if (d.meta.avg_duration) html += `<div class="detail">Avg: ${d.meta.avg_duration}</div>`;
+    if (d.meta.triggered === 'true') html += `<div class="detail" style="color:#ff3d71">ANOMALY (${d.meta.severity})</div>`;
+    tooltip.innerHTML = html;
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.pageX + 12) + 'px';
+    tooltip.style.top = (e.pageY + 12) + 'px';
+  }).on('mousemove', e => {
+    tooltip.style.left = (e.pageX + 12) + 'px';
+    tooltip.style.top = (e.pageY + 12) + 'px';
+  }).on('mouseout', () => { tooltip.style.display = 'none'; });
+
+  sim.on('tick', () => {
+    link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y)
+        .attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+
+  // Animate particles along edges (traffic flow effect)
+  function animateParticles() {
+    links.forEach(l => {
+      if (Math.random() > 0.3) return; // not every edge every frame
+      const particle = g.append('circle').attr('r',2).attr('fill','#6c5ce7').attr('opacity',0.8);
+      const sx = l.source.x, sy = l.source.y, tx = l.target.x, ty = l.target.y;
+      particle.attr('cx',sx).attr('cy',sy)
+        .transition().duration(1000 + Math.random()*500).ease(d3.easeLinear)
+        .attr('cx',tx).attr('cy',ty).attr('opacity',0)
+        .remove();
+    });
+  }
+  setInterval(animateParticles, 2000);
+}
+
+loadGraph();
+setInterval(loadGraph, 30000); // refresh every 30s
+</script>
+</body>
+</html>

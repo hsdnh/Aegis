@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Ops Agent - Flame Graph</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0f1117; color:#e4e6f0; font-family:system-ui,sans-serif; }
+.header { display:flex; align-items:center; justify-content:space-between; padding:12px 24px; background:#1a1d27; border-bottom:1px solid #2a2e3d; }
+.header h1 { font-size:16px; }
+.header a { color:#6c5ce7; text-decoration:none; font-size:13px; }
+.container { padding:24px; }
+.info { color:#8b8fa3; font-size:12px; margin-bottom:16px; }
+.flame-row { display:flex; margin-bottom:1px; cursor:pointer; position:relative; }
+.flame-bar { height:22px; display:flex; align-items:center; padding:0 6px; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-radius:2px; min-width:2px; transition:opacity 0.1s; }
+.flame-bar:hover { opacity:0.85; }
+.flame-bar .pct { margin-left:4px; color:rgba(255,255,255,0.6); font-size:10px; }
+.tooltip { position:fixed; background:#1a1d27; border:1px solid #2a2e3d; border-radius:8px; padding:10px 14px; font-size:12px; pointer-events:none; display:none; box-shadow:0 4px 20px rgba(0,0,0,0.5); z-index:100; }
+.tooltip .label { font-weight:600; margin-bottom:4px; }
+.tooltip .detail { color:#8b8fa3; font-size:11px; }
+.empty { text-align:center; padding:60px; color:#5c6070; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Flame Graph — Function Time Breakdown</h1>
+  <a href="/">Back to Dashboard</a>
+</div>
+<div class="container">
+  <div class="info" id="info">Loading trace data...</div>
+  <div id="flame"></div>
+</div>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const tooltip = document.getElementById('tooltip');
+const flame = document.getElementById('flame');
+const info = document.getElementById('info');
+
+// Color palette based on percentage (green→yellow→red)
+function pctColor(pct) {
+  if (pct > 60) return `hsl(0, 80%, ${45 + pct/5}%)`;    // red
+  if (pct > 30) return `hsl(35, 85%, ${45 + pct/5}%)`;    // orange
+  if (pct > 15) return `hsl(50, 80%, ${40 + pct/5}%)`;    // yellow
+  return `hsl(260, 60%, ${40 + pct/5}%)`;                  // purple
+}
+
+async function loadFlame() {
+  const resp = await fetch('/api/trace');
+  const data = await resp.json();
+
+  if (data.status === 'no_trace' || !data.hot_spots || data.hot_spots.length === 0) {
+    flame.innerHTML = '<div class="empty">No trace data available. Trigger a trace window from the Management panel.</div>';
+    info.textContent = '';
+    return;
+  }
+
+  const spots = data.hot_spots.sort((a,b) => b.pct_of_total - a.pct_of_total);
+  const maxPct = Math.max(...spots.map(s => s.pct_of_total), 1);
+
+  info.textContent = `Window: ${data.snapshot.trigger} | Spans: ${data.snapshot.span_count} | Goroutines: ${data.snapshot.goroutines} | Heap: ${data.snapshot.heap_alloc_mb}MB`;
+
+  let html = '';
+  spots.forEach(s => {
+    const widthPct = Math.max((s.pct_of_total / maxPct) * 100, 2);
+    const color = pctColor(s.pct_of_total);
+    const dur = s.total_time > 1000000000
+      ? (s.total_time / 1e9).toFixed(2) + 's'
+      : (s.total_time / 1e6).toFixed(1) + 'ms';
+    const avg = s.avg_time > 1000000
+      ? (s.avg_time / 1e6).toFixed(1) + 'ms'
+      : (s.avg_time / 1e3).toFixed(0) + 'us';
+
+    html += `<div class="flame-row"
+      onmouseover="showTip(event,'${s.func_name||'func_'+s.func_id}','${dur}','${avg}','${s.call_count}','${s.pct_of_total.toFixed(1)}')"
+      onmousemove="moveTip(event)" onmouseout="hideTip()">
+      <div class="flame-bar" style="width:${widthPct}%;background:${color};">
+        ${s.func_name || 'func_' + s.func_id}
+        <span class="pct">${s.pct_of_total.toFixed(1)}%</span>
+      </div>
+    </div>`;
+  });
+
+  flame.innerHTML = html;
+}
+
+function showTip(e, name, total, avg, calls, pct) {
+  tooltip.innerHTML = `
+    <div class="label">${name}</div>
+    <div class="detail">Total: ${total}</div>
+    <div class="detail">Avg: ${avg}</div>
+    <div class="detail">Calls: ${calls}</div>
+    <div class="detail">Share: ${pct}%</div>`;
+  tooltip.style.display = 'block';
+  moveTip(e);
+}
+function moveTip(e) {
+  tooltip.style.left = (e.pageX+12)+'px';
+  tooltip.style.top = (e.pageY+12)+'px';
+}
+function hideTip() { tooltip.style.display = 'none'; }
+
+loadFlame();
+setInterval(loadFlame, 15000);
+</script>
+</body>
+</html>

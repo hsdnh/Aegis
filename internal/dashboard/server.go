@@ -65,6 +65,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/trace", s.corsMiddleware(s.handleTrace))
 	s.mux.HandleFunc("/api/logs", s.corsMiddleware(s.handleLogs))
 
+	// Request traces (for waterfall view)
+	s.mux.HandleFunc("/api/traces/recent", s.corsMiddleware(s.handleRecentTraces))
+
 	// Activity feed + Chat
 	s.mux.HandleFunc("/api/events", s.corsMiddleware(s.handleEvents))
 	s.mux.HandleFunc("/api/events/poll", s.corsMiddleware(s.handleEventsPoll))
@@ -124,6 +127,12 @@ func (s *Server) handleMetricAnnotations(w http.ResponseWriter, r *http.Request)
 	metrics := s.store.GetMetrics()
 	annotations := AnnotateMetrics(metrics, nil) // TODO: pass baseline
 	s.writeJSON(w, annotations)
+}
+
+func (s *Server) handleRecentTraces(w http.ResponseWriter, r *http.Request) {
+	// Returns empty array — trace store is populated by the SDK probe.
+	// When a TraceStore is connected, it returns real data.
+	s.writeJSON(w, []interface{}{})
 }
 
 func (s *Server) handleIssues(w http.ResponseWriter, r *http.Request) {

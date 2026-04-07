@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Ops Agent - Request Waterfall</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0f1117; color:#e4e6f0; font-family:system-ui,sans-serif; }
+.header { display:flex; align-items:center; justify-content:space-between; padding:12px 24px; background:#1a1d27; border-bottom:1px solid #2a2e3d; }
+.header h1 { font-size:16px; }
+.header a { color:#6c5ce7; text-decoration:none; font-size:13px; }
+.container { padding:24px; }
+.trace-list { display:flex; flex-direction:column; gap:8px; margin-bottom:24px; }
+.trace-card { background:#1a1d27; border:1px solid #2a2e3d; border-radius:8px; padding:12px 16px; cursor:pointer; transition:all 0.15s; display:flex; align-items:center; gap:12px; }
+.trace-card:hover { border-color:#6c5ce7; }
+.trace-card.selected { border-color:#6c5ce7; background:#222636; }
+.trace-status { width:8px; height:8px; border-radius:50%; }
+.trace-status.ok { background:#00d68f; }
+.trace-status.error { background:#ff3d71; }
+.trace-status.slow { background:#ffaa00; }
+.trace-name { flex:1; font-size:13px; }
+.trace-dur { font-size:12px; color:#8b8fa3; font-variant-numeric:tabular-nums; }
+.trace-time { font-size:11px; color:#5c6070; }
+.waterfall { margin-top:16px; }
+.wf-header { display:flex; padding:4px 0; margin-bottom:8px; border-bottom:1px solid #2a2e3d; font-size:11px; color:#5c6070; }
+.wf-label { width:200px; flex-shrink:0; }
+.wf-timeline { flex:1; position:relative; }
+.wf-row { display:flex; align-items:center; padding:3px 0; }
+.wf-row-label { width:200px; flex-shrink:0; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-left:calc(var(--depth, 0) * 12px); }
+.wf-row-bar { flex:1; position:relative; height:16px; }
+.wf-bar { position:absolute; height:100%; border-radius:2px; min-width:2px; display:flex; align-items:center; padding:0 4px; font-size:9px; color:rgba(255,255,255,0.8); }
+.wf-bar.func { background:#6c5ce7; }
+.wf-bar.redis { background:#ff7b47; }
+.wf-bar.mysql { background:#3366ff; }
+.wf-bar.http { background:#00d68f; }
+.wf-bar.error { background:#ff3d71; }
+.wf-time-markers { display:flex; justify-content:space-between; font-size:10px; color:#5c6070; margin-top:4px; }
+.detail-panel { margin-top:16px; background:#1a1d27; border:1px solid #2a2e3d; border-radius:8px; padding:16px; font-size:12px; }
+.detail-row { display:flex; gap:8px; padding:3px 0; }
+.detail-label { color:#5c6070; width:80px; }
+.detail-val { color:#e4e6f0; }
+.detail-val.error { color:#ff3d71; }
+.empty { text-align:center; padding:60px; color:#5c6070; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Request Waterfall — Per-Request Timeline</h1>
+  <a href="/">Back to Dashboard</a>
+</div>
+<div class="container">
+  <h3 style="font-size:14px;margin-bottom:12px;">Recent Requests</h3>
+  <div class="trace-list" id="trace-list">
+    <div class="empty">No request traces available yet</div>
+  </div>
+  <div id="waterfall-detail"></div>
+</div>
+
+<script>
+let traces = [];
+let selectedIdx = -1;
+
+async function loadTraces() {
+  try {
+    const resp = await fetch('/api/traces/recent?n=20');
+    traces = await resp.json();
+  } catch(e) {
+    traces = [];
+  }
+  renderTraceList();
+}
+
+function renderTraceList() {
+  const el = document.getElementById('trace-list');
+  if (!traces || traces.length === 0) {
+    el.innerHTML = '<div class="empty">No request traces. Traces appear when SDK probe records requests.</div>';
+    return;
+  }
+
+  el.innerHTML = traces.map((t, i) => {
+    const dur = t.duration_ns ? (t.duration_ns / 1e6).toFixed(1) + 'ms' : '?';
+    const time = new Date(t.start_time).toLocaleTimeString('zh-CN');
+    return `<div class="trace-card ${i===selectedIdx?'selected':''}" onclick="selectTrace(${i})">
+      <div class="trace-status ${t.status}"></div>
+      <div class="trace-name">${t.entry_type} ${t.entry_func}</div>
+      <div class="trace-dur">${dur}</div>
+      <div class="trace-time">${time}</div>
+    </div>`;
+  }).join('');
+}
+
+function selectTrace(idx) {
+  selectedIdx = idx;
+  renderTraceList();
+  renderWaterfall(traces[idx]);
+}
+
+function renderWaterfall(trace) {
+  const detail = document.getElementById('waterfall-detail');
+  if (!trace || !trace.steps || trace.steps.length === 0) {
+    detail.innerHTML = '<div class="empty">No steps recorded in this trace</div>';
+    return;
+  }
+
+  // Find time range
+  const steps = trace.steps;
+  const minTime = Math.min(...steps.map(s => s.start_nano).filter(Boolean));
+  const maxTime = Math.max(...steps.map(s => s.end_nano || s.start_nano).filter(Boolean));
+  const totalRange = maxTime - minTime || 1;
+
+  // Time markers
+  const markers = [0, 0.25, 0.5, 0.75, 1].map(pct => {
+    const ms = ((totalRange * pct) / 1e6).toFixed(1);
+    return ms + 'ms';
+  });
+
+  let html = `<div class="waterfall">`;
+  html += `<div class="wf-header"><div class="wf-label">Function</div><div class="wf-timeline">Timeline</div></div>`;
+
+  steps.forEach(s => {
+    const start = s.start_nano ? ((s.start_nano - minTime) / totalRange * 100) : 0;
+    const end = s.end_nano ? ((s.end_nano - minTime) / totalRange * 100) : start + 1;
+    const width = Math.max(end - start, 0.5);
+    const durMs = s.duration_ns ? (s.duration_ns / 1e6).toFixed(1) : '?';
+    const barClass = s.has_error ? 'error' : (s.op_type || 'func');
+    const label = s.func_name || s.op_type || '?';
+    const depth = s.depth || 0;
+
+    html += `<div class="wf-row">
+      <div class="wf-row-label" style="--depth:${depth}" title="${label}">${'  '.repeat(depth)}${label}</div>
+      <div class="wf-row-bar">
+        <div class="wf-bar ${barClass}" style="left:${start}%;width:${width}%;" title="${label}: ${durMs}ms">
+          ${width > 5 ? durMs + 'ms' : ''}
+        </div>
+      </div>
+    </div>`;
+  });
+
+  html += `<div class="wf-time-markers">${markers.map(m => `<span>${m}</span>`).join('')}</div>`;
+  html += `</div>`;
+
+  // Detail panel
+  html += `<div class="detail-panel">`;
+  html += `<div class="detail-row"><div class="detail-label">Trace ID</div><div class="detail-val">${trace.trace_id}</div></div>`;
+  html += `<div class="detail-row"><div class="detail-label">Entry</div><div class="detail-val">${trace.entry_func} (${trace.entry_type})</div></div>`;
+  html += `<div class="detail-row"><div class="detail-label">Status</div><div class="detail-val ${trace.status==='error'?'error':''}">${trace.status.toUpperCase()}</div></div>`;
+  html += `<div class="detail-row"><div class="detail-label">Duration</div><div class="detail-val">${(trace.duration_ns/1e6).toFixed(1)}ms</div></div>`;
+  html += `<div class="detail-row"><div class="detail-label">Steps</div><div class="detail-val">${steps.length}</div></div>`;
+
+  // Step details with ops
+  html += `<div style="margin-top:12px;border-top:1px solid #2a2e3d;padding-top:12px;">`;
+  steps.forEach((s, i) => {
+    const durMs = s.duration_ns ? (s.duration_ns / 1e6).toFixed(1) + 'ms' : '';
+    html += `<div style="padding:2px 0;font-size:11px;">`;
+    html += `<span style="color:#5c6070;">#${i+1}</span> `;
+    html += `<span style="color:${s.has_error?'#ff3d71':'#e4e6f0'}">${s.func_name||'?'}</span> `;
+    if (s.op_type) html += `<span style="color:#8b8fa3;">[${s.op_type}]</span> `;
+    if (s.op_detail) html += `<span style="color:#6c5ce7;">${s.op_detail}</span> `;
+    if (s.op_result) html += `<span style="color:#00d68f;">→ ${s.op_result}</span> `;
+    if (durMs) html += `<span style="color:#5c6070;">(${durMs})</span>`;
+    if (s.has_error) html += ` <span style="color:#ff3d71;">ERROR: ${s.error_msg}</span>`;
+    html += `</div>`;
+  });
+  html += `</div></div>`;
+
+  detail.innerHTML = html;
+}
+
+loadTraces();
+setInterval(loadTraces, 10000);
+</script>
+</body>
+</html>
