@@ -17,10 +17,11 @@ var staticFiles embed.FS
 
 // Server serves the dashboard web UI and API.
 type Server struct {
-	store    *Store
-	eventLog *EventLog
-	chat     *ChatService
-	addr     string
+	store      *Store
+	eventLog   *EventLog
+	chat       *ChatService
+	aiTerminal *AITerminal
+	addr       string
 	mux      *http.ServeMux
 }
 
@@ -39,6 +40,64 @@ func NewServer(store *Store, addr string, eventLog *EventLog, chat *ChatService,
 		s.registerManageRoutes(mgr)
 	}
 	return s
+}
+
+// SetAITerminal enables the interactive AI terminal.
+func (s *Server) SetAITerminal(terminal *AITerminal) {
+	s.aiTerminal = terminal
+	s.mux.HandleFunc("/api/terminal/ask", s.corsMiddleware(s.handleTerminalAsk))
+	s.mux.HandleFunc("/api/terminal/session", s.corsMiddleware(s.handleTerminalSession))
+}
+
+func (s *Server) handleTerminalAsk(w http.ResponseWriter, r *http.Request) {
+	if s.aiTerminal == nil {
+		s.writeJSON(w, map[string]string{"error": "AI terminal not configured"})
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	body, _ := io.ReadAll(r.Body)
+	var req struct {
+		SessionID string `json:"session_id"`
+		Message   string `json:"message"`
+	}
+	json.Unmarshal(body, &req)
+	if req.Message == "" {
+		s.writeJSON(w, map[string]string{"error": "message required"})
+		return
+	}
+	if req.SessionID == "" {
+		req.SessionID = "default"
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	msg, err := s.aiTerminal.Ask(ctx, req.SessionID, req.Message)
+	if err != nil {
+		s.writeJSON(w, map[string]string{"error": err.Error()})
+		return
+	}
+	s.writeJSON(w, msg)
+}
+
+func (s *Server) handleTerminalSession(w http.ResponseWriter, r *http.Request) {
+	if s.aiTerminal == nil {
+		s.writeJSON(w, map[string]string{"error": "AI terminal not configured"})
+		return
+	}
+	sid := r.URL.Query().Get("id")
+	if sid == "" {
+		sid = "default"
+	}
+	session := s.aiTerminal.GetSession(sid)
+	if session == nil {
+		s.writeJSON(w, []interface{}{})
+		return
+	}
+	s.writeJSON(w, session)
 }
 
 // RegisterCausalAPI adds causal chain endpoints. Called after server creation.

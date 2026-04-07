@@ -427,6 +427,28 @@ body {
     </div>
   </div>
 
+  <!-- AI Terminal -->
+  <div class="panel grid-full">
+    <div class="panel-header">
+      <span class="panel-title">AI Terminal</span>
+      <span class="panel-badge" style="background:rgba(108,92,231,0.2);color:var(--accent);">SRE</span>
+    </div>
+    <div class="panel-body" style="padding:0;">
+      <div id="terminal-messages" style="padding:16px 20px;max-height:350px;overflow-y:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:12px;">
+        <div style="color:var(--accent);margin-bottom:8px;">Welcome to AI Terminal. I can investigate issues on this server.</div>
+        <div style="color:var(--text-muted);margin-bottom:12px;">Try: "check if Redis is healthy" or "show recent error logs" or "why is the queue backed up?"</div>
+      </div>
+      <div style="display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--border);">
+        <span style="color:var(--accent);line-height:36px;font-family:monospace;">$</span>
+        <input type="text" id="terminal-input" placeholder="Ask the AI to investigate..."
+          style="flex:1;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text-primary);font-family:'Cascadia Code','Fira Code',monospace;font-size:12px;outline:none;"
+          onkeydown="if(event.key==='Enter')sendTerminal()">
+        <button onclick="sendTerminal()"
+          style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:12px;">Run</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Management Panel -->
   <div class="panel grid-full">
     <div class="panel-header">
@@ -911,6 +933,48 @@ async function refreshCausalChains() {
       </div>
     `;
   }).join('');
+}
+
+// --- AI Terminal ---
+let terminalLoading = false;
+
+async function sendTerminal() {
+  const input = document.getElementById('terminal-input');
+  const msg = input.value.trim();
+  if (!msg || terminalLoading) return;
+  input.value = '';
+  terminalLoading = true;
+
+  const msgsDiv = document.getElementById('terminal-messages');
+
+  // User message
+  msgsDiv.innerHTML += `<div style="margin:8px 0;"><span style="color:var(--green);">you$</span> <span style="color:var(--text-primary);">${escapeHtml(msg)}</span></div>`;
+  msgsDiv.innerHTML += `<div id="terminal-loading" style="color:var(--text-muted);">thinking...</div>`;
+  msgsDiv.scrollTop = msgsDiv.scrollHeight;
+
+  try {
+    const res = await fetch('/api/terminal/ask', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({session_id:'dashboard', message:msg})
+    });
+    const data = await res.json();
+    const el = document.getElementById('terminal-loading');
+    if (el) el.remove();
+
+    if (data.error) {
+      msgsDiv.innerHTML += `<div style="margin:8px 0;color:var(--red);">error: ${escapeHtml(data.error)}</div>`;
+    } else {
+      const content = (data.content || '').replace(/\n/g, '<br>');
+      msgsDiv.innerHTML += `<div style="margin:8px 0;"><span style="color:var(--accent);">ai$</span> <div style="color:var(--text-secondary);margin-top:4px;white-space:pre-wrap;line-height:1.5;">${content}</div></div>`;
+    }
+  } catch(e) {
+    const el = document.getElementById('terminal-loading');
+    if (el) el.remove();
+    msgsDiv.innerHTML += `<div style="color:var(--red);">network error</div>`;
+  }
+
+  terminalLoading = false;
+  msgsDiv.scrollTop = msgsDiv.scrollHeight;
 }
 
 // --- Management Panel ---
