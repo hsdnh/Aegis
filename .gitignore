@@ -1,0 +1,34 @@
+# Binaries
+bin/
+release/
+*.exe
+ai-ops-agent
+ai-ops-agent-instrument
+ai-ops-agent-init
+ai-ops-agent-uninstall
+
+# Data
+data/
+*.db
+*.sqlite
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+*.env.local
+
+# Test
+coverage.out
+*.test
+
+# Vendor (if using)
+# vendor/

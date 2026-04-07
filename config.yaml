@@ -1,0 +1,135 @@
+# AI Ops Agent - mercari-hunter 监控配置
+project: mercari-hunter
+
+# 监控调度: 每 30 分钟执行一次
+schedule: "*/30 * * * *"
+
+collectors:
+  redis:
+    - addr: "127.0.0.1:6379"
+      password: "${REDIS_PASSWORD}"
+      db: 0
+      checks:
+        - key_pattern: "mh:queue:*:pending"
+          threshold: 1000
+          alert: "搜索队列堆积"
+        - key_pattern: "mh:queue:*:processing"
+          threshold: 500
+          alert: "处理中队列过大"
+
+  mysql:
+    - dsn: "${MYSQL_DSN}"
+      checks:
+        - query: "SELECT COUNT(*) FROM proxy_orders WHERE status='pending' AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)"
+          name: "pending_orders"
+          threshold: 50
+          alert: "待处理订单堆积"
+        - query: "SELECT COUNT(*) FROM proxy_orders WHERE status='failed' AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)"
+          name: "failed_orders"
+          threshold: 10
+          alert: "失败订单过多"
+
+  http:
+    - url: "http://localhost:8080/v1/overview"
+      auth: "basic:${API_USER}:${API_PASS}"
+      timeout: 10
+      checks:
+        - json_path: ".queue_stats.pending"
+          name: "api_queue_pending"
+          threshold: 5000
+          alert: "API 报告队列堆积"
+        - json_path: ".worker_stats.online"
+          name: "workers_online"
+          threshold: 0
+          alert: "无在线 Worker"
+
+  log:
+    - source: journalctl
+      unit: mercari-worker-process
+      error_patterns: ["失败", "error", "panic", "timeout", "connection refused"]
+      minutes: 30
+
+# 规则引擎: 硬阈值告警
+rules:
+  - name: "Redis 队列堆积"
+    metric_name: "redis.keys.mh_queue_all_pending.total_length"
+    operator: ">"
+    threshold: 1000
+    severity: "critical"
+    message: "Redis 搜索队列堆积超过 1000"
+
+  - name: "Redis 连接断开"
+    metric_name: "redis.connection.alive"
+    operator: "=="
+    threshold: 0
+    severity: "fatal"
+    message: "Redis 连接断开"
+
+  - name: "MySQL 连接断开"
+    metric_name: "mysql.connection.alive"
+    operator: "=="
+    threshold: 0
+    severity: "fatal"
+    message: "MySQL 连接断开"
+
+  - name: "待处理订单堆积"
+    metric_name: "mysql.check.pending_orders"
+    operator: ">"
+    threshold: 50
+    severity: "critical"
+    message: "待处理订单超过 50 个"
+
+  - name: "失败订单过多"
+    metric_name: "mysql.check.failed_orders"
+    operator: ">"
+    threshold: 10
+    severity: "warning"
+    message: "最近 1 小时失败订单超过 10 个"
+
+  - name: "API 无响应"
+    metric_name: "http.response.alive"
+    operator: "=="
+    threshold: 0
+    severity: "fatal"
+    message: "API 服务无响应"
+
+  - name: "API 响应慢"
+    metric_name: "http.response.latency_ms"
+    operator: ">"
+    threshold: 5000
+    severity: "warning"
+    message: "API 响应时间超过 5 秒"
+
+  - name: "错误日志过多"
+    metric_name: "log.lines.errors"
+    operator: ">"
+    threshold: 50
+    severity: "warning"
+    message: "最近 30 分钟错误日志超过 50 条"
+
+# AI 分析 (Level 2, 暂不启用)
+ai:
+  enabled: false
+  provider: claude
+  api_key: "${CLAUDE_API_KEY}"
+  model: claude-sonnet-4-20250514
+  system_prompt: |
+    你是一个生产系统运维 AI，专门监控 mercari-hunter 二手市场监控系统。
+    分析以下指标和日志，判断是否有异常，给出根因分析和修复建议。
+    重点关注：
+    - 队列堆积（可能是 runtime 创建过多、worker 掉线、任务产生过快）
+    - 下单失败（可能是 worker 没连 MySQL、代理失效、规则匹配错误）
+    - 推送异常（可能是去重失效、共享 runtime 竞态、评级不一致）
+    - 安全问题（Redis 被入侵、SSH 异常登录）
+
+# 告警通道
+alerts:
+  console: {}
+  # bark:
+  #   server_url: "https://api.day.app"
+  #   keys:
+  #     - "${BARK_KEY}"
+  # telegram:
+  #   token: "${TELEGRAM_BOT_TOKEN}"
+  #   chat_ids:
+  #     - 123456789

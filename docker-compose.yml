@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  ai-ops-agent:
+    build: .
+    container_name: ai-ops-agent
+    restart: unless-stopped
+    ports:
+      - "9090:9090"     # Dashboard
+      - "19876:19876/udp" # SDK trace receiver
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - agent-data:/app/data
+    # Connect to host network services (Redis, MySQL, etc.)
+    # Option 1: host network (simplest, Linux only)
+    # network_mode: host
+    # Option 2: explicit extra_hosts
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - MYSQL_DSN=${MYSQL_DSN:-}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
+
+volumes:
+  agent-data:

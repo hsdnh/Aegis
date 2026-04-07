@@ -1,0 +1,557 @@
+#!/bin/bash
+#
+# AI Ops Agent — One-Line Installer & Manager
+#
+# Usage:
+#   curl -sS https://raw.githubusercontent.com/aiopsagent/ai-ops-agent/main/install.sh | bash
+#
+# Or download and run:
+#   curl -sS -O https://raw.githubusercontent.com/aiopsagent/ai-ops-agent/main/install.sh
+#   chmod +x install.sh && ./install.sh
+
+set -e
+
+# ============================================================
+# Configuration
+# ============================================================
+REPO="hsdnh/ai-ops-agent"
+INSTALL_DIR="/opt/ai-ops-agent"
+DATA_DIR="/opt/ai-ops-agent/data"
+CONFIG_FILE="/opt/ai-ops-agent/config.yaml"
+SERVICE_NAME="ai-ops-agent"
+DASHBOARD_PORT="9090"
+GITHUB_RAW="https://raw.githubusercontent.com/${REPO}/main"
+GITHUB_RELEASE="https://github.com/${REPO}/releases/latest/download"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+DIM='\033[2m'
+
+# ============================================================
+# Utility Functions
+# ============================================================
+print_logo() {
+    echo -e "${PURPLE}"
+    echo "    _    ___    ___                _                    _   "
+    echo "   / \  |_ _|  / _ \ _ __  ___   / \   __ _  ___ _ __ | |_ "
+    echo "  / _ \  | |  | | | | '_ \/ __| / _ \ / _\` |/ _ \ '_ \| __|"
+    echo " / ___ \ | |  | |_| | |_) \__ \/ ___ \ (_| |  __/ | | | |_ "
+    echo "/_/   \_\___|  \___/| .__/|___/_/   \_\__, |\___|_| |_|\__|"
+    echo "                    |_|               |___/                 "
+    echo -e "${NC}"
+    echo -e "${DIM}Production Runtime Intelligent Monitoring & Self-Healing Framework${NC}"
+    echo ""
+}
+
+print_sep() {
+    echo -e "${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
+
+print_status() {
+    echo -e "${GREEN}[OK]${NC} $1"
+}
+
+print_warn() {
+    echo -e "${YELLOW}[!]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_info() {
+    echo -e "${CYAN}[i]${NC} $1"
+}
+
+detect_os() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS=$ID
+        OS_VERSION=$VERSION_ID
+    elif [ -f /etc/debian_version ]; then
+        OS="debian"
+    elif [ -f /etc/redhat-release ]; then
+        OS="centos"
+    else
+        OS="unknown"
+    fi
+
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64)  ARCH="amd64" ;;
+        aarch64) ARCH="arm64" ;;
+        armv7l)  ARCH="arm" ;;
+    esac
+}
+
+check_root() {
+    if [ "$(id -u)" != "0" ]; then
+        print_error "This script requires root privileges. Run with sudo."
+        exit 1
+    fi
+}
+
+# ============================================================
+# Installation Functions
+# ============================================================
+install_agent() {
+    echo ""
+    print_sep
+    echo -e "${BOLD}${WHITE} Installing AI Ops Agent${NC}"
+    print_sep
+    echo ""
+
+    detect_os
+    print_info "OS: $OS $OS_VERSION | Arch: $ARCH"
+
+    # Create directories
+    mkdir -p "$INSTALL_DIR" "$DATA_DIR"
+    print_status "Created directories"
+
+    # Download binary
+    echo ""
+    print_info "Downloading latest release..."
+    BINARY_NAME="ai-ops-agent-linux-${ARCH}"
+    if curl -fsSL "${GITHUB_RELEASE}/${BINARY_NAME}" -o "${INSTALL_DIR}/ai-ops-agent" 2>/dev/null; then
+        chmod +x "${INSTALL_DIR}/ai-ops-agent"
+        print_status "Binary downloaded: ${INSTALL_DIR}/ai-ops-agent"
+    else
+        print_warn "Pre-built binary not found. Building from source..."
+        install_from_source
+    fi
+
+    # Download instrument tool
+    if curl -fsSL "${GITHUB_RELEASE}/ai-ops-agent-instrument-linux-${ARCH}" -o "${INSTALL_DIR}/ai-ops-agent-instrument" 2>/dev/null; then
+        chmod +x "${INSTALL_DIR}/ai-ops-agent-instrument"
+        print_status "Instrument tool downloaded"
+    fi
+
+    # Create symlinks
+    ln -sf "${INSTALL_DIR}/ai-ops-agent" /usr/local/bin/ai-ops-agent
+    ln -sf "${INSTALL_DIR}/ai-ops-agent-instrument" /usr/local/bin/ai-ops-agent-instrument 2>/dev/null
+    print_status "Symlinks created in /usr/local/bin/"
+
+    # Generate default config if not exists
+    if [ ! -f "$CONFIG_FILE" ]; then
+        generate_config
+    else
+        print_warn "Config exists: $CONFIG_FILE (not overwritten)"
+    fi
+
+    # Create systemd service
+    create_service
+
+    echo ""
+    print_sep
+    echo -e "${GREEN}${BOLD} Installation Complete!${NC}"
+    print_sep
+    echo ""
+    echo -e "  Config:    ${WHITE}${CONFIG_FILE}${NC}"
+    echo -e "  Binary:    ${WHITE}${INSTALL_DIR}/ai-ops-agent${NC}"
+    echo -e "  Dashboard: ${WHITE}http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'localhost'):${DASHBOARD_PORT}${NC}"
+    echo ""
+    echo -e "  ${YELLOW}Next steps:${NC}"
+    echo -e "  1. Edit config:  ${CYAN}nano ${CONFIG_FILE}${NC}"
+    echo -e "  2. Start agent:  ${CYAN}systemctl start ${SERVICE_NAME}${NC}"
+    echo -e "  3. Open dashboard in browser"
+    echo ""
+}
+
+install_from_source() {
+    # Check Go
+    if ! command -v go &> /dev/null; then
+        print_info "Installing Go..."
+        curl -fsSL https://go.dev/dl/go1.22.5.linux-${ARCH}.tar.gz | tar -C /usr/local -xzf -
+        export PATH=$PATH:/usr/local/go/bin
+        print_status "Go installed"
+    fi
+
+    # Clone and build
+    print_info "Cloning repository..."
+    TMP_DIR=$(mktemp -d)
+    git clone --depth 1 "https://github.com/${REPO}.git" "$TMP_DIR" 2>/dev/null
+    cd "$TMP_DIR"
+
+    print_info "Building..."
+    CGO_ENABLED=1 go build -o "${INSTALL_DIR}/ai-ops-agent" ./cmd/agent/
+    CGO_ENABLED=0 go build -o "${INSTALL_DIR}/ai-ops-agent-instrument" ./cmd/instrument/
+    print_status "Built from source"
+
+    rm -rf "$TMP_DIR"
+}
+
+generate_config() {
+    cat > "$CONFIG_FILE" << 'YAML'
+# AI Ops Agent Configuration
+# Edit this file to match your project
+
+project: my-project
+schedule: "*/30 * * * *"
+
+collectors:
+  # Redis monitoring
+  # redis:
+  #   - addr: "127.0.0.1:6379"
+  #     password: ""
+  #     checks:
+  #       - key_pattern: "queue:*:pending"
+  #         threshold: 1000
+  #         alert: "Queue buildup"
+
+  # MySQL monitoring
+  # mysql:
+  #   - dsn: "user:pass@tcp(127.0.0.1:3306)/dbname"
+  #     checks:
+  #       - query: "SELECT COUNT(*) FROM orders WHERE status='pending'"
+  #         name: "pending_orders"
+  #         threshold: 100
+  #         alert: "Order backlog"
+
+  # HTTP health checks
+  # http:
+  #   - url: "http://localhost:8080/health"
+  #     checks:
+  #       - json_path: ".status"
+  #         name: "health_status"
+  #         threshold: 0
+  #         alert: "Service unhealthy"
+
+  # Log monitoring
+  # log:
+  #   - source: journalctl
+  #     unit: my-service
+  #     error_patterns: ["error", "panic", "fatal"]
+  #     minutes: 30
+
+rules: []
+
+ai:
+  enabled: false
+  provider: claude
+  api_key: ""
+  model: claude-sonnet-4-20250514
+
+alerts:
+  console: {}
+  # bark:
+  #   keys: ["your-bark-key"]
+  # telegram:
+  #   token: "your-bot-token"
+  #   chat_ids: [123456789]
+YAML
+    print_status "Default config created: $CONFIG_FILE"
+}
+
+create_service() {
+    cat > /etc/systemd/system/${SERVICE_NAME}.service << EOF
+[Unit]
+Description=AI Ops Agent - Production Monitoring
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${INSTALL_DIR}/ai-ops-agent -config ${CONFIG_FILE} -dashboard :${DASHBOARD_PORT}
+WorkingDirectory=${INSTALL_DIR}
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable ${SERVICE_NAME} 2>/dev/null
+    print_status "Systemd service created and enabled"
+}
+
+# ============================================================
+# Management Functions
+# ============================================================
+start_agent() {
+    systemctl start ${SERVICE_NAME}
+    sleep 1
+    if systemctl is-active --quiet ${SERVICE_NAME}; then
+        print_status "Agent started"
+        echo -e "  Dashboard: ${CYAN}http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'localhost'):${DASHBOARD_PORT}${NC}"
+    else
+        print_error "Failed to start. Check: journalctl -u ${SERVICE_NAME} -f"
+    fi
+}
+
+stop_agent() {
+    systemctl stop ${SERVICE_NAME}
+    print_status "Agent stopped"
+}
+
+restart_agent() {
+    systemctl restart ${SERVICE_NAME}
+    sleep 1
+    if systemctl is-active --quiet ${SERVICE_NAME}; then
+        print_status "Agent restarted"
+    else
+        print_error "Failed to restart. Check: journalctl -u ${SERVICE_NAME} -f"
+    fi
+}
+
+show_status() {
+    echo ""
+    print_sep
+    echo -e "${BOLD}${WHITE} Agent Status${NC}"
+    print_sep
+    echo ""
+
+    if systemctl is-active --quiet ${SERVICE_NAME} 2>/dev/null; then
+        echo -e "  Status:    ${GREEN}Running${NC}"
+        PID=$(systemctl show -p MainPID ${SERVICE_NAME} | cut -d= -f2)
+        echo -e "  PID:       ${WHITE}${PID}${NC}"
+        UPTIME=$(systemctl show -p ActiveEnterTimestamp ${SERVICE_NAME} | cut -d= -f2)
+        echo -e "  Since:     ${WHITE}${UPTIME}${NC}"
+        MEM=$(ps -o rss= -p $PID 2>/dev/null | awk '{printf "%.1f MB", $1/1024}')
+        echo -e "  Memory:    ${WHITE}${MEM}${NC}"
+    else
+        echo -e "  Status:    ${RED}Stopped${NC}"
+    fi
+
+    echo ""
+    echo -e "  Config:    ${WHITE}${CONFIG_FILE}${NC}"
+    echo -e "  Data:      ${WHITE}${DATA_DIR}${NC}"
+    echo -e "  Dashboard: ${WHITE}http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'localhost'):${DASHBOARD_PORT}${NC}"
+
+    if [ -d "$DATA_DIR" ]; then
+        SIZE=$(du -sh "$DATA_DIR" 2>/dev/null | cut -f1)
+        echo -e "  Data size: ${WHITE}${SIZE}${NC}"
+    fi
+    echo ""
+}
+
+show_logs() {
+    echo -e "${CYAN}Press Ctrl+C to exit${NC}"
+    journalctl -u ${SERVICE_NAME} -f --no-pager
+}
+
+edit_config() {
+    if command -v nano &>/dev/null; then
+        nano "$CONFIG_FILE"
+    elif command -v vi &>/dev/null; then
+        vi "$CONFIG_FILE"
+    else
+        print_error "No editor found. Manually edit: $CONFIG_FILE"
+    fi
+}
+
+init_project() {
+    echo ""
+    echo -e "${BOLD}${WHITE} L0 Project Scanner${NC}"
+    echo ""
+    read -p "  Project name: " proj_name
+    read -p "  Source code path: " src_path
+    read -p "  Redis address (empty to skip): " redis_addr
+    read -p "  MySQL DSN (empty to skip): " mysql_dsn
+    read -p "  Claude API key (empty to skip AI): " api_key
+
+    echo ""
+    print_info "Scanning project..."
+
+    CMD="${INSTALL_DIR}/ai-ops-agent-init --project ${proj_name} --source ${src_path}"
+    [ -n "$redis_addr" ] && CMD="$CMD --redis $redis_addr"
+    [ -n "$mysql_dsn" ] && CMD="$CMD --mysql '$mysql_dsn'"
+    [ -n "$api_key" ] && CMD="$CMD --api-key $api_key"
+    CMD="$CMD --output ${CONFIG_FILE}"
+
+    eval $CMD
+
+    echo ""
+    print_status "Config generated: $CONFIG_FILE"
+    print_info "Review and adjust, then start the agent."
+}
+
+install_probes() {
+    echo ""
+    read -p "  Target project path: " target_path
+    if [ -z "$target_path" ]; then
+        print_error "Path required"
+        return
+    fi
+    print_info "Installing SDK probes..."
+    ${INSTALL_DIR}/ai-ops-agent-instrument "$target_path/..."
+    echo ""
+    print_status "Probes installed. Remember to add to main.go:"
+    echo -e "  ${CYAN}import _ \"github.com/aiopsagent/ai-ops-agent/sdk/autotrace\"${NC}"
+}
+
+strip_probes() {
+    echo ""
+    read -p "  Target project path: " target_path
+    if [ -z "$target_path" ]; then
+        print_error "Path required"
+        return
+    fi
+    print_info "Stripping SDK probes..."
+    ${INSTALL_DIR}/ai-ops-agent-instrument -strip "$target_path/..."
+    print_status "Probes removed. Source code restored."
+}
+
+uninstall_agent() {
+    echo ""
+    echo -e "${RED}${BOLD} This will completely remove AI Ops Agent${NC}"
+    echo ""
+    read -p "  Also strip SDK probes from source? (y/N): " strip_src
+    read -p "  Type 'yes' to confirm uninstall: " confirm
+
+    if [ "$confirm" != "yes" ]; then
+        print_info "Aborted."
+        return
+    fi
+
+    # Stop service
+    systemctl stop ${SERVICE_NAME} 2>/dev/null
+    systemctl disable ${SERVICE_NAME} 2>/dev/null
+    rm -f /etc/systemd/system/${SERVICE_NAME}.service
+    systemctl daemon-reload
+    print_status "Service removed"
+
+    # Strip probes
+    if [ "$strip_src" = "y" ] || [ "$strip_src" = "Y" ]; then
+        read -p "  Source code path: " src_path
+        if [ -n "$src_path" ]; then
+            ${INSTALL_DIR}/ai-ops-agent-instrument -strip "$src_path/..." 2>/dev/null
+            print_status "Probes stripped"
+        fi
+    fi
+
+    # Remove files
+    rm -f /usr/local/bin/ai-ops-agent
+    rm -f /usr/local/bin/ai-ops-agent-instrument
+    rm -rf "$INSTALL_DIR"
+    print_status "Files removed"
+
+    echo ""
+    print_status "AI Ops Agent completely uninstalled."
+}
+
+update_agent() {
+    print_info "Updating AI Ops Agent..."
+    systemctl stop ${SERVICE_NAME} 2>/dev/null
+
+    detect_os
+    BINARY_NAME="ai-ops-agent-linux-${ARCH}"
+    if curl -fsSL "${GITHUB_RELEASE}/${BINARY_NAME}" -o "${INSTALL_DIR}/ai-ops-agent.new" 2>/dev/null; then
+        mv "${INSTALL_DIR}/ai-ops-agent.new" "${INSTALL_DIR}/ai-ops-agent"
+        chmod +x "${INSTALL_DIR}/ai-ops-agent"
+        print_status "Binary updated"
+    else
+        print_warn "Download failed. Trying build from source..."
+        install_from_source
+    fi
+
+    systemctl start ${SERVICE_NAME}
+    print_status "Agent updated and restarted"
+}
+
+# ============================================================
+# Main Menu
+# ============================================================
+show_menu() {
+    clear
+    print_logo
+
+    # Quick status line
+    if systemctl is-active --quiet ${SERVICE_NAME} 2>/dev/null; then
+        echo -e "  Status: ${GREEN}● Running${NC}    Dashboard: ${CYAN}http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'localhost'):${DASHBOARD_PORT}${NC}"
+    else
+        echo -e "  Status: ${RED}● Stopped${NC}"
+    fi
+    echo ""
+
+    print_sep
+    echo -e "${BOLD}${WHITE} Quick Start${NC}"
+    print_sep
+    echo -e "  ${GREEN}1${NC}.  Install AI Ops Agent"
+    echo -e "  ${GREEN}2${NC}.  L0 Project Scanner (auto-generate config)"
+    echo ""
+    print_sep
+    echo -e "${BOLD}${WHITE} Agent Control${NC}"
+    print_sep
+    echo -e "  ${GREEN}3${NC}.  Start Agent"
+    echo -e "  ${GREEN}4${NC}.  Stop Agent"
+    echo -e "  ${GREEN}5${NC}.  Restart Agent"
+    echo -e "  ${GREEN}6${NC}.  View Status"
+    echo -e "  ${GREEN}7${NC}.  View Logs (live)"
+    echo -e "  ${GREEN}8${NC}.  Edit Config"
+    echo ""
+    print_sep
+    echo -e "${BOLD}${WHITE} SDK Probe Management${NC}"
+    print_sep
+    echo -e "  ${GREEN}9${NC}.  Install SDK Probes (deep tracing)"
+    echo -e "  ${GREEN}10${NC}. Strip SDK Probes (restore code)"
+    echo ""
+    print_sep
+    echo -e "${BOLD}${WHITE} Maintenance${NC}"
+    print_sep
+    echo -e "  ${GREEN}11${NC}. Update Agent"
+    echo -e "  ${RED}12${NC}. Uninstall Agent"
+    echo ""
+    print_sep
+    echo -e "  ${GREEN}0${NC}.  Exit"
+    print_sep
+    echo ""
+}
+
+# ============================================================
+# Entry Point
+# ============================================================
+main() {
+    check_root
+    detect_os
+
+    # If run with arguments, execute directly
+    case "${1:-}" in
+        install)    install_agent; exit 0 ;;
+        start)      start_agent; exit 0 ;;
+        stop)       stop_agent; exit 0 ;;
+        restart)    restart_agent; exit 0 ;;
+        status)     show_status; exit 0 ;;
+        logs)       show_logs; exit 0 ;;
+        update)     update_agent; exit 0 ;;
+        uninstall)  uninstall_agent; exit 0 ;;
+    esac
+
+    # Interactive menu
+    while true; do
+        show_menu
+        read -p "  Enter selection [0-12]: " choice
+        echo ""
+
+        case $choice in
+            1)  install_agent ;;
+            2)  init_project ;;
+            3)  start_agent ;;
+            4)  stop_agent ;;
+            5)  restart_agent ;;
+            6)  show_status ;;
+            7)  show_logs ;;
+            8)  edit_config ;;
+            9)  install_probes ;;
+            10) strip_probes ;;
+            11) update_agent ;;
+            12) uninstall_agent ;;
+            0)  echo -e "${GREEN}Bye!${NC}"; exit 0 ;;
+            *)  print_error "Invalid option" ;;
+        esac
+
+        echo ""
+        read -p "  Press Enter to continue..." _
+    done
+}
+
+main "$@"
