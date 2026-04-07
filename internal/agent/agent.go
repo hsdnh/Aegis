@@ -17,6 +17,7 @@ import (
 	"github.com/hsdnh/ai-ops-agent/internal/issue"
 	"github.com/hsdnh/ai-ops-agent/internal/rule"
 	"github.com/hsdnh/ai-ops-agent/internal/sanitize"
+	"github.com/hsdnh/ai-ops-agent/internal/storage"
 	"github.com/hsdnh/ai-ops-agent/internal/tracecollector"
 	"github.com/hsdnh/ai-ops-agent/pkg/types"
 	"github.com/google/uuid"
@@ -30,15 +31,20 @@ type Agent struct {
 	depMap         *rule.DependencyMap
 	alertMgr       *alert.Manager
 	issueTracker   *issue.Tracker
-	analyst        *ai.Analyst                   // L2 AI analysis (nil = disabled)
-	causalGraph    *causal.Graph                 // bidirectional causal tracing (nil = disabled)
-	traceReceiver  *tracecollector.TraceReceiver
-	traceTargetAddr string // SDK control address for triggering windows
-	codeContext    string  // L0 scan results cached for AI context
-	store          *dashboard.Store    // dashboard data (nil = no dashboard)
-	eventLog       *dashboard.EventLog // activity feed (nil = no dashboard)
-	logger         *log.Logger
-	prevAlertCount int // for event-driven AI gating
+	analyst         *ai.Analyst                   // L2 AI analysis (nil = disabled)
+	causalGraph     *causal.Graph                 // bidirectional causal tracing (nil = disabled)
+	traceReceiver   *tracecollector.TraceReceiver
+	traceTargetAddr string
+	codeContext     string
+	store           *dashboard.Store    // dashboard data (nil = no dashboard)
+	eventLog        *dashboard.EventLog // activity feed (nil = no dashboard)
+	db              *storage.DB                    // SQLite persistence (nil = memory only)
+	baselineLearner *storage.BaselineLearner       // baseline learning (nil = disabled)
+	expectModel     *causal.ExpectationModel       // trace pattern learning (nil = disabled)
+	shadowVerifier  *causal.ShadowVerifier         // independent data verification (nil = disabled)
+	syntheticRunner *causal.SyntheticRunner         // active probes (nil = disabled)
+	logger          *log.Logger
+	prevAlertCount  int
 }
 
 func New(
@@ -198,10 +204,45 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 	}
 	snapshot.Alerts = toNotify
 
-	// Step 8: Sanitize before any external use (AI, logging, etc.)
+	// Step 8: Sanitize before any external use
 	sanitizedSnapshot := sanitize.SanitizeSnapshot(*snapshot)
 
-	// Step 8.5: L2 AI Analysis (event-driven)
+	// Step 8.5: Baseline learning — ingest metrics and compute baselines
+	var aiBaseline *ai.BaselineData
+	if a.baselineLearner != nil {
+		a.baselineLearner.Ingest(allMetrics)
+		if a.baselineLearner.IsReady() {
+			aiBaseline = a.baselineLearner.GetAIBaseline()
+		}
+	}
+
+	// Step 9: Shadow verification — independently verify data integrity
+	if a.shadowVerifier != nil {
+		svResults := a.shadowVerifier.RunAll(ctx)
+		for _, svr := range svResults {
+			if svr.Status == "fail" {
+				a.logger.Printf("  SHADOW FAIL: %s — %s", svr.CheckName, svr.Message)
+				a.emit(func(el *dashboard.EventLog) {
+					el.Add(dashboard.Event{Type: "shadow", Icon: "🔍", Message: "Shadow: " + svr.Message, Severity: "error", CycleID: cycleID})
+				})
+			}
+		}
+	}
+
+	// Step 9.5: Synthetic probes — active health checks
+	if a.syntheticRunner != nil {
+		probeResults := a.syntheticRunner.RunAll(ctx)
+		for _, pr := range probeResults {
+			if pr.Status == "fail" {
+				a.logger.Printf("  PROBE FAIL: %s — %s", pr.ProbeName, pr.Error)
+				a.emit(func(el *dashboard.EventLog) {
+					el.Add(dashboard.Event{Type: "probe", Icon: "🧪", Message: "Probe failed: " + pr.ProbeName + " — " + pr.Error, Severity: "error", CycleID: cycleID})
+				})
+			}
+		}
+	}
+
+	// Step 10: L2 AI Analysis (event-driven)
 	if a.analyst != nil && analyzer.ShouldInvokeAI(*snapshot, a.issueTracker.OpenIssues(), a.prevAlertCount) {
 		a.logger.Printf("Invoking AI analysis...")
 		a.emit(func(el *dashboard.EventLog) { el.AIStart(cycleID) })
@@ -210,6 +251,7 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 			Snapshot:    sanitizedSnapshot,
 			OpenIssues:  a.issueTracker.OpenIssues(),
 			CodeContext: a.codeContext,
+			Baseline:    aiBaseline, // ← NOW WIRED: baseline data feeds AI
 		}
 		if a.traceReceiver != nil {
 			aiInput.TraceData = a.traceReceiver.LatestWindow()
@@ -220,20 +262,30 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 			a.logger.Printf("  AI analysis failed: %v", err)
 			a.emit(func(el *dashboard.EventLog) { el.Error(cycleID, "AI analysis failed: "+err.Error()) })
 		} else {
-			a.logger.Printf("  AI analysis: %d anomalies, confidence %.0f%%, %d rounds, %d+%d tokens",
-				len(aiResult.Anomalies), aiResult.Confidence*100, aiResult.Rounds,
-				aiResult.TotalInputTokens, aiResult.TotalOutputTokens)
+			a.logger.Printf("  AI analysis: %d anomalies, confidence %.0f%%, %d rounds",
+				len(aiResult.Anomalies), aiResult.Confidence*100, aiResult.Rounds)
 
 			a.emit(func(el *dashboard.EventLog) {
 				el.AIResult(cycleID, len(aiResult.Anomalies), aiResult.Confidence,
 					aiResult.TotalInputTokens, aiResult.TotalOutputTokens)
 			})
 
+			// ← NOW WIRED: AI anomalies enrich existing Issues with root cause + suggestions
 			for _, anomaly := range aiResult.Anomalies {
 				if anomaly.Confidence >= 0.6 {
 					a.emit(func(el *dashboard.EventLog) {
 						el.AIAnomaly(cycleID, anomaly.Title, anomaly.RootCause, anomaly.Confidence, anomaly.Suggestions)
 					})
+					// Enrich matching open issues with AI insights
+					for _, iss := range a.issueTracker.OpenIssues() {
+						if iss.RootCause == "" && iss.Status == types.IssueOpen {
+							iss.RootCause = anomaly.RootCause
+							iss.Suggestions = anomaly.Suggestions
+							iss.CodeRefs = anomaly.CodeRefs
+							iss.Confidence = anomaly.Confidence
+							break
+						}
+					}
 				}
 			}
 
@@ -249,14 +301,33 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 				}
 			}
 
-			// Push AI results to dashboard
 			if a.store != nil {
 				a.store.PushAnalysis(aiResult, cycleID)
+			}
+			// ← NOW WIRED: persist AI analysis to SQLite
+			if a.db != nil {
+				a.db.SaveAnalysis(cycleID, aiResult.HealthSummary, aiResult.Confidence,
+					aiResult.Anomalies, aiResult.TotalInputTokens, aiResult.TotalOutputTokens, aiResult.Rounds)
 			}
 		}
 	}
 
-	// Step 9: Dispatch notifications
+	// Step 10.5: Causal chains enrich Issues with root cause code location
+	if a.causalGraph != nil {
+		chains := a.causalGraph.TraceAllAnomalies(snapshot)
+		for _, ch := range chains {
+			// ← NOW WIRED: causal root cause writes into matching Issue
+			for _, iss := range a.issueTracker.OpenIssues() {
+				if iss.CodeRefs == nil && ch.RootCause != "" {
+					iss.CodeRefs = []string{ch.RootCause}
+					a.logger.Printf("  CAUSAL: Issue %s → %s", iss.ID, ch.RootCause)
+					break
+				}
+			}
+		}
+	}
+
+	// Step 11: Dispatch notifications
 	if len(toNotify) > 0 {
 		a.logger.Printf("Dispatching %d notifications...", len(toNotify))
 		errs := a.alertMgr.DispatchAll(ctx, toNotify)
@@ -268,7 +339,7 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 		}
 	}
 
-	// Step 10: Anomaly-triggered trace window
+	// Step 12: Anomaly-triggered trace window
 	if a.traceReceiver != nil && a.traceTargetAddr != "" && len(newIssues) > 0 {
 		for _, iss := range newIssues {
 			if iss.Severity >= types.SeverityCritical {
@@ -281,7 +352,14 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 		}
 	}
 
-	// Step 11: Push everything to dashboard
+	// Step 13: Persist issues to SQLite
+	if a.db != nil {
+		for _, iss := range a.issueTracker.OpenIssues() {
+			a.db.SaveIssue(iss)
+		}
+	}
+
+	// Step 14: Push everything to dashboard
 	if a.store != nil {
 		a.store.PushAgentHealth(&agentHealth)
 		a.store.PushSnapshot(snapshot)
@@ -291,6 +369,11 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 				a.store.PushTrace(tw)
 			}
 		}
+	}
+
+	// Step 15: Cleanup old metric data (keep 7 days)
+	if a.db != nil {
+		a.db.CleanOldMetrics(7 * 24 * time.Hour)
 	}
 
 	// Finalize
@@ -343,6 +426,27 @@ func (a *Agent) SetCodeContext(ctx string) {
 func (a *Agent) SetTraceReceiver(receiver *tracecollector.TraceReceiver, targetAddr string) {
 	a.traceReceiver = receiver
 	a.traceTargetAddr = targetAddr
+}
+
+// SetStorage enables SQLite persistence + baseline learning.
+func (a *Agent) SetStorage(db *storage.DB) {
+	a.db = db
+	a.baselineLearner = storage.NewBaselineLearner(db, 48) // 24h at 30min intervals
+}
+
+// SetExpectationModel enables trace pattern learning.
+func (a *Agent) SetExpectationModel(em *causal.ExpectationModel) {
+	a.expectModel = em
+}
+
+// SetShadowVerifier enables independent data verification.
+func (a *Agent) SetShadowVerifier(sv *causal.ShadowVerifier) {
+	a.shadowVerifier = sv
+}
+
+// SetSyntheticRunner enables active health probes.
+func (a *Agent) SetSyntheticRunner(sr *causal.SyntheticRunner) {
+	a.syntheticRunner = sr
 }
 
 // Shutdown gracefully closes all resources.
