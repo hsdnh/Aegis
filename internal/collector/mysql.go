@@ -49,12 +49,14 @@ func (m *MySQLCollector) Collect(ctx context.Context) (*types.CollectResult, err
 		CollectedAt:   now,
 	}
 
-	// Connection alive check
+	// Connection alive check — MUST return result (not nil) even on failure
+	// so that alive=0 reaches the rule engine for alerting
 	if err := m.db.PingContext(ctx); err != nil {
 		result.Metrics = append(result.Metrics, types.Metric{
 			Name: "mysql.connection.alive", Value: 0, Timestamp: now, Source: "mysql",
 		})
-		return nil, fmt.Errorf("mysql ping failed: %w", err)
+		result.Errors = append(result.Errors, fmt.Sprintf("mysql ping failed: %v", err))
+		return result, nil // return partial result, NOT error
 	}
 	result.Metrics = append(result.Metrics, types.Metric{
 		Name: "mysql.connection.alive", Value: 1, Timestamp: now, Source: "mysql",

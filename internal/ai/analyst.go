@@ -98,10 +98,7 @@ func (a *Analyst) SetDomainKnowledge(knowledge string) {
 // Supports self-correction: if confidence < 0.7, it requests more data
 // and re-analyzes (up to maxRounds times).
 func (a *Analyst) Analyze(ctx context.Context, input AnalysisInput) (*AnalysisResult, error) {
-	// Build the static system prompt (cached by Claude API)
-	a.client.SetSystemPrompt(a.buildSystemPrompt())
-
-	// Build the dynamic user message (changes each cycle)
+	systemPrompt := a.buildSystemPrompt()
 	userMsg := a.buildUserMessage(input)
 
 	messages := []Message{
@@ -111,7 +108,7 @@ func (a *Analyst) Analyze(ctx context.Context, input AnalysisInput) (*AnalysisRe
 	var finalResult AnalysisResult
 
 	for round := 1; round <= a.maxRounds; round++ {
-		resp, err := a.client.Chat(ctx, messages)
+		resp, err := a.client.ChatWithSystem(ctx, systemPrompt, messages)
 		if err != nil {
 			return nil, fmt.Errorf("round %d AI call failed: %w", round, err)
 		}

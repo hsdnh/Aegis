@@ -11,11 +11,10 @@ import (
 // GenerateConfig uses AI to analyze scan+probe results and produce a monitoring config.
 // Returns: draft config YAML, analysis summary, and confidence score.
 func GenerateConfig(ctx context.Context, client *ai.Client, scan *ScanResult, probe *ProbeResult, projectName string) (configYAML string, summary string, err error) {
-	client.SetSystemPrompt(buildConfigGenSystemPrompt())
-
+	systemPrompt := buildConfigGenSystemPrompt()
 	userMsg := buildConfigGenUserMessage(scan, probe, projectName)
 
-	resp, err := client.Chat(ctx, []ai.Message{
+	resp, err := client.ChatWithSystem(ctx, systemPrompt, []ai.Message{
 		{Role: "user", Content: userMsg},
 	})
 	if err != nil {

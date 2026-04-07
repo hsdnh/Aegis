@@ -40,16 +40,12 @@ func (cs *ChatService) Ask(ctx context.Context, question string) (string, error)
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	// Build context from current system state
 	systemCtx := cs.buildSystemContext()
-	cs.client.SetSystemPrompt(systemCtx)
 
-	// Add user message to history
 	cs.history = append(cs.history, ChatMessage{
 		Role: "user", Content: question, Timestamp: time.Now(),
 	})
 
-	// Build conversation messages (keep last 10 turns)
 	var messages []ai.Message
 	start := 0
 	if len(cs.history) > 20 {
@@ -59,7 +55,7 @@ func (cs *ChatService) Ask(ctx context.Context, question string) (string, error)
 		messages = append(messages, ai.Message{Role: msg.Role, Content: msg.Content})
 	}
 
-	resp, err := cs.client.Chat(ctx, messages)
+	resp, err := cs.client.ChatWithSystem(ctx, systemCtx, messages)
 	if err != nil {
 		return "", fmt.Errorf("AI chat failed: %w", err)
 	}

@@ -26,9 +26,6 @@ type Client struct {
 	baseURL    string
 	httpClient *http.Client
 
-	// Prompt caching: static context sent once, reused across calls.
-	// Saves ~80% input tokens when system prompt + project context is large.
-	cachedSystemPrompt string
 }
 
 func NewClient(provider Provider, apiKey, model string) *Client {
@@ -53,9 +50,10 @@ func NewClient(provider Provider, apiKey, model string) *Client {
 	return c
 }
 
-// SetSystemPrompt sets the cached system prompt (static context).
+// SetSystemPrompt is DEPRECATED — use ChatWithSystem instead.
+// Kept for backward compat but is a no-op now.
 func (c *Client) SetSystemPrompt(prompt string) {
-	c.cachedSystemPrompt = prompt
+	// no-op: system prompt is now per-request to avoid race conditions
 }
 
 // Message represents a chat message.
@@ -74,11 +72,17 @@ type Response struct {
 
 // Chat sends a conversation to the AI and returns the response.
 func (c *Client) Chat(ctx context.Context, messages []Message) (*Response, error) {
+	return c.ChatWithSystem(ctx, "", messages)
+}
+
+// ChatWithSystem sends a conversation with a per-request system prompt.
+// This is thread-safe — no shared mutable state.
+func (c *Client) ChatWithSystem(ctx context.Context, systemPrompt string, messages []Message) (*Response, error) {
 	switch c.provider {
 	case ProviderClaude:
-		return c.chatClaude(ctx, messages)
+		return c.chatClaude(ctx, systemPrompt, messages)
 	case ProviderOpenAI:
-		return c.chatOpenAI(ctx, messages)
+		return c.chatOpenAI(ctx, systemPrompt, messages)
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", c.provider)
 	}
@@ -86,20 +90,18 @@ func (c *Client) Chat(ctx context.Context, messages []Message) (*Response, error
 
 // --- Claude API ---
 
-func (c *Client) chatClaude(ctx context.Context, messages []Message) (*Response, error) {
-	// Build request body
+func (c *Client) chatClaude(ctx context.Context, systemPrompt string, messages []Message) (*Response, error) {
 	body := map[string]interface{}{
 		"model":      c.model,
 		"max_tokens": 4096,
 		"messages":   messages,
 	}
 
-	// System prompt with cache control (Anthropic prompt caching)
-	if c.cachedSystemPrompt != "" {
+	if systemPrompt != "" {
 		body["system"] = []map[string]interface{}{
 			{
 				"type": "text",
-				"text": c.cachedSystemPrompt,
+				"text": systemPrompt,
 				"cache_control": map[string]string{
 					"type": "ephemeral",
 				},
@@ -166,10 +168,10 @@ func (c *Client) chatClaude(ctx context.Context, messages []Message) (*Response,
 
 // --- OpenAI API ---
 
-func (c *Client) chatOpenAI(ctx context.Context, messages []Message) (*Response, error) {
+func (c *Client) chatOpenAI(ctx context.Context, systemPrompt string, messages []Message) (*Response, error) {
 	msgs := messages
-	if c.cachedSystemPrompt != "" {
-		msgs = append([]Message{{Role: "system", Content: c.cachedSystemPrompt}}, msgs...)
+	if systemPrompt != "" {
+		msgs = append([]Message{{Role: "system", Content: systemPrompt}}, msgs...)
 	}
 
 	body := map[string]interface{}{

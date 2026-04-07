@@ -193,6 +193,15 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 			a.issueTracker.MarkNotified(iss.Fingerprint)
 		}
 	}
+	// Notify on updates (regression, worsening, data gap recovery)
+	for _, iss := range updatedIssues {
+		if a.issueTracker.ShouldNotify(iss) {
+			al := issueToAlert(iss, a.projectName)
+			al.Title = fmt.Sprintf("[%s] %s", iss.Status, al.Title)
+			toNotify = append(toNotify, al)
+			a.issueTracker.MarkNotified(iss.Fingerprint)
+		}
+	}
 	for _, iss := range resolvedIssues {
 		if a.issueTracker.ShouldNotify(iss) {
 			al := issueToAlert(iss, a.projectName)

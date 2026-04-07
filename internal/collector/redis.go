@@ -48,10 +48,14 @@ func (r *RedisCollector) Collect(ctx context.Context) (*types.CollectResult, err
 		CollectedAt:   now,
 	}
 
-	// Basic info
+	// Basic info — return partial result on failure, NOT nil
 	info, err := r.client.Info(ctx, "memory", "clients", "stats").Result()
 	if err != nil {
-		return nil, fmt.Errorf("redis INFO failed: %w", err)
+		result.Metrics = append(result.Metrics, types.Metric{
+			Name: "redis.connection.alive", Value: 0, Timestamp: now, Source: "redis",
+		})
+		result.Errors = append(result.Errors, fmt.Sprintf("redis INFO failed: %v", err))
+		return result, nil // alive=0 MUST reach the rule engine
 	}
 	r.parseInfo(info, result)
 

@@ -83,6 +83,9 @@ func (t *Tracker) ProcessCycleResults(cycleID string, ruleResults []types.RuleRe
 			case types.IssueImproving:
 				t.transition(issue, types.IssueOpen, "Regression — anomaly returned", cycleID)
 				updatedIssues = append(updatedIssues, issue)
+			case types.IssueDataGap:
+				t.transition(issue, types.IssueOpen, "Data restored — anomaly confirmed present", cycleID)
+				updatedIssues = append(updatedIssues, issue)
 			case types.IssueResolved:
 				issue.ReopenCount++
 				issue.FlapScore++

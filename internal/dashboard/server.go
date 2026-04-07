@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -22,7 +23,8 @@ type Server struct {
 	chat       *ChatService
 	aiTerminal *AITerminal
 	addr       string
-	mux      *http.ServeMux
+	authToken  string // if set, all API requests must include ?token=xxx or Authorization: Bearer xxx
+	mux        *http.ServeMux
 }
 
 // CausalGraphRegistrar allows the causal package to register its API routes.
@@ -30,16 +32,36 @@ type CausalGraphRegistrar interface {
 	RegisterToMux(mux *http.ServeMux, cors func(http.HandlerFunc) http.HandlerFunc)
 }
 
-func NewServer(store *Store, addr string, eventLog *EventLog, chat *ChatService, mgr *ManageService) *Server {
+func NewServer(store *Store, addr string, eventLog *EventLog, chat *ChatService, mgr *ManageService, authToken string) *Server {
 	if addr == "" {
-		addr = ":9090"
+		addr = "127.0.0.1:9090" // bind to localhost by default for security
 	}
-	s := &Server{store: store, addr: addr, eventLog: eventLog, chat: chat, mux: http.NewServeMux()}
+	s := &Server{store: store, addr: addr, eventLog: eventLog, chat: chat, authToken: authToken, mux: http.NewServeMux()}
 	s.registerRoutes()
 	if mgr != nil {
 		s.registerManageRoutes(mgr)
 	}
 	return s
+}
+
+// authMiddleware checks token if authToken is configured.
+func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.authToken != "" {
+			token := r.URL.Query().Get("token")
+			if token == "" {
+				auth := r.Header.Get("Authorization")
+				if strings.HasPrefix(auth, "Bearer ") {
+					token = auth[7:]
+				}
+			}
+			if token != s.authToken {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+		}
+		next(w, r)
+	}
 }
 
 // SetAITerminal enables the interactive AI terminal.

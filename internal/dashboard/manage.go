@@ -264,11 +264,14 @@ func formatUptime(d time.Duration) string {
 // --- HTTP Handlers (registered by Server) ---
 
 func (s *Server) registerManageRoutes(mgr *ManageService) {
-	s.mux.HandleFunc("/api/manage/status", s.corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	// Helper: manage routes get CORS + auth
+	wrap := func(h http.HandlerFunc) http.HandlerFunc { return s.corsMiddleware(s.authMiddleware(h)) }
+
+	s.mux.HandleFunc("/api/manage/status", wrap(func(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, mgr.GetStatus())
 	}))
 
-	s.mux.HandleFunc("/api/manage/probes/install", s.corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	s.mux.HandleFunc("/api/manage/probes/install", wrap(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, "POST required", http.StatusMethodNotAllowed)
 			return
@@ -283,7 +286,7 @@ func (s *Server) registerManageRoutes(mgr *ManageService) {
 		s.writeJSON(w, result)
 	}))
 
-	s.mux.HandleFunc("/api/manage/probes/strip", s.corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	s.mux.HandleFunc("/api/manage/probes/strip", wrap(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, "POST required", http.StatusMethodNotAllowed)
 			return
@@ -298,7 +301,7 @@ func (s *Server) registerManageRoutes(mgr *ManageService) {
 		s.writeJSON(w, result)
 	}))
 
-	s.mux.HandleFunc("/api/manage/trace/trigger", s.corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	s.mux.HandleFunc("/api/manage/trace/trigger", wrap(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, "POST required", http.StatusMethodNotAllowed)
 			return
@@ -316,7 +319,7 @@ func (s *Server) registerManageRoutes(mgr *ManageService) {
 		s.writeJSON(w, map[string]string{"status": "ok"})
 	}))
 
-	s.mux.HandleFunc("/api/manage/data/clean", s.corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	s.mux.HandleFunc("/api/manage/data/clean", wrap(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, "POST required", http.StatusMethodNotAllowed)
 			return

@@ -74,10 +74,8 @@ func (t *AITerminal) Ask(ctx context.Context, sessionID, question string) (*Term
 	})
 	t.mu.Unlock()
 
-	// Build system prompt with available tools and current system state
-	t.client.SetSystemPrompt(t.buildSystemPrompt())
+	systemPrompt := t.buildSystemPrompt()
 
-	// Build messages
 	var msgs []ai.Message
 	t.mu.Lock()
 	for _, m := range session.Messages {
@@ -87,17 +85,14 @@ func (t *AITerminal) Ask(ctx context.Context, sessionID, question string) (*Term
 	}
 	t.mu.Unlock()
 
-	// First AI call — it may request tool execution
-	resp, err := t.client.Chat(ctx, msgs)
+	resp, err := t.client.ChatWithSystem(ctx, systemPrompt, msgs)
 	if err != nil {
 		return nil, fmt.Errorf("AI call failed: %w", err)
 	}
 
 	response := resp.Content
 
-	// Check if AI wants to run a command (look for ```tool blocks)
 	if toolCalls := extractToolCalls(response); len(toolCalls) > 0 {
-		// Execute tools and send results back
 		var toolResults strings.Builder
 		toolResults.WriteString("Tool execution results:\n\n")
 
@@ -106,13 +101,12 @@ func (t *AITerminal) Ask(ctx context.Context, sessionID, question string) (*Term
 			toolResults.WriteString(fmt.Sprintf("### %s: %s\n```\n%s\n```\n\n", tc.Tool, tc.Args, result))
 		}
 
-		// Send tool results back to AI for final analysis
 		msgs = append(msgs,
 			ai.Message{Role: "assistant", Content: response},
 			ai.Message{Role: "user", Content: toolResults.String() + "\nBased on these results, provide your analysis."},
 		)
 
-		resp2, err := t.client.Chat(ctx, msgs)
+		resp2, err := t.client.ChatWithSystem(ctx, systemPrompt, msgs)
 		if err == nil {
 			response = resp2.Content
 		}

@@ -105,8 +105,12 @@ func main() {
 			chatSvc = dashboard.NewChatService(aiClient, store, eventLog)
 		}
 
-		mgr := dashboard.NewManageService("", "./data", eventLog) // source path set later if needed
-		srv := dashboard.NewServer(store, *dashAddr, eventLog, chatSvc, mgr)
+		mgr := dashboard.NewManageService("", "./data", eventLog)
+		dashToken := os.Getenv("AIOPS_DASHBOARD_TOKEN") // set env var to enable auth
+		srv := dashboard.NewServer(store, *dashAddr, eventLog, chatSvc, mgr, dashToken)
+		if dashToken != "" {
+			log.Printf("Dashboard auth enabled (token required)")
+		}
 		go func() {
 			if err := srv.Start(); err != nil {
 				log.Printf("Dashboard server error: %v", err)

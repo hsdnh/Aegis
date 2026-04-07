@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+
 	"github.com/hsdnh/ai-ops-agent/pkg/types"
 )
 
@@ -40,24 +41,40 @@ func ShouldSuppressCritical(h types.AgentHealth) bool {
 	return !h.NetworkOK
 }
 
-func checkNetwork(ctx context.Context) bool {
-	// Try to resolve a well-known external host
-	// We don't make HTTP requests — just DNS + TCP to minimize overhead
-	resolver := &net.Resolver{}
-	resolveCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
+// HealthCheckTarget can be set via env AIOPS_HEALTH_TARGET to override default.
+// Default tries multiple targets for China/global/intranet compatibility.
+var HealthCheckTarget = os.Getenv("AIOPS_HEALTH_TARGET")
 
-	_, err := resolver.LookupHost(resolveCtx, "dns.google")
-	if err == nil {
-		return true // DNS resolved successfully
+func checkNetwork(ctx context.Context) bool {
+	// If user specified a custom target, only check that
+	if HealthCheckTarget != "" {
+		conn, err := net.DialTimeout("tcp", HealthCheckTarget, 3*time.Second)
+		if err != nil {
+			return false
+		}
+		conn.Close()
+		return true
 	}
-	// Fallback: try TCP connect to a public DNS
-	conn, err := net.DialTimeout("tcp", "8.8.8.8:53", 3*time.Second)
-	if err != nil {
-		return false
+
+	// Try multiple targets for global compatibility:
+	// China: 114.114.114.114 (DNS), 223.5.5.5 (Alibaba DNS)
+	// Global: 8.8.8.8 (Google), 1.1.1.1 (Cloudflare)
+	// Any one succeeding = network is OK
+	targets := []string{
+		"114.114.114.114:53", // China DNS
+		"223.5.5.5:53",       // Alibaba DNS
+		"8.8.8.8:53",         // Google DNS
+		"1.1.1.1:53",         // Cloudflare DNS
 	}
-	conn.Close()
-	return true
+
+	for _, target := range targets {
+		conn, err := net.DialTimeout("tcp", target, 2*time.Second)
+		if err == nil {
+			conn.Close()
+			return true
+		}
+	}
+	return false
 }
 
 func checkDisk() bool {
