@@ -14,6 +14,38 @@ type Config struct {
 	Rules      []RuleConfig      `yaml:"rules"`
 	AI         AIConfig          `yaml:"ai"`
 	Alerts     AlertsConfig      `yaml:"alerts"`
+	Storage    StorageConfig     `yaml:"storage"`
+	Shadow     []ShadowCheckConfig `yaml:"shadow,omitempty"`
+	Probes     []SyntheticProbeConfig `yaml:"probes,omitempty"`
+	SourcePath string            `yaml:"source_path,omitempty"` // for L0 scan + instrument
+}
+
+type StorageConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Path    string `yaml:"path"` // SQLite file path, default "./data/aiops.db"
+}
+
+type ShadowCheckConfig struct {
+	Name        string `yaml:"name"`
+	Type        string `yaml:"type"` // "sql_compare", "cross_check"
+	Description string `yaml:"description"`
+	Severity    string `yaml:"severity"`
+	Query       string `yaml:"query,omitempty"`
+	Expect      string `yaml:"expect,omitempty"`
+	SourceQuery string `yaml:"source_query,omitempty"`
+	TargetQuery string `yaml:"target_query,omitempty"`
+	CompareMode string `yaml:"compare_mode,omitempty"`
+}
+
+type SyntheticProbeConfig struct {
+	Name         string `yaml:"name"`
+	Type         string `yaml:"type"` // "http", "redis_roundtrip"
+	URL          string `yaml:"url,omitempty"`
+	Method       string `yaml:"method,omitempty"`
+	ExpectStatus int    `yaml:"expect_status,omitempty"`
+	ExpectBody   string `yaml:"expect_body,omitempty"`
+	RedisAddr    string `yaml:"redis_addr,omitempty"`
+	TimeoutSec   int    `yaml:"timeout_sec,omitempty"`
 }
 
 type CollectorsConfig struct {

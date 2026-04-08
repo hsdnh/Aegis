@@ -285,9 +285,15 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 					a.emit(func(el *dashboard.EventLog) {
 						el.AIAnomaly(cycleID, anomaly.Title, anomaly.RootCause, anomaly.Confidence, anomaly.Suggestions)
 					})
-					// Enrich matching open issues with AI insights
+					// Enrich matching open issues — match by title similarity, not blind first-one
 					for _, iss := range a.issueTracker.OpenIssues() {
-						if iss.RootCause == "" && iss.Status == types.IssueOpen {
+						if iss.Status != types.IssueOpen || iss.RootCause != "" {
+							continue
+						}
+						// Match: anomaly title contains issue title or vice versa
+						if strings.Contains(strings.ToLower(anomaly.Title), strings.ToLower(iss.Title)) ||
+							strings.Contains(strings.ToLower(iss.Title), strings.ToLower(anomaly.Title)) ||
+							strings.Contains(anomaly.RootCause, iss.Title) {
 							iss.RootCause = anomaly.RootCause
 							iss.Suggestions = anomaly.Suggestions
 							iss.CodeRefs = anomaly.CodeRefs
@@ -325,9 +331,21 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 	if a.causalGraph != nil {
 		chains := a.causalGraph.TraceAllAnomalies(snapshot)
 		for _, ch := range chains {
-			// ← NOW WIRED: causal root cause writes into matching Issue
+			if ch.RootCause == "" {
+				continue
+			}
+			// Match causal chain to issue by symptom metric name
+			symptomMetric := strings.TrimPrefix(ch.Symptom, "metric:")
 			for _, iss := range a.issueTracker.OpenIssues() {
-				if iss.CodeRefs == nil && ch.RootCause != "" {
+				// Match by metric name in evidence or title
+				matched := false
+				for _, ev := range iss.Evidence {
+					if strings.Contains(ev.Source, symptomMetric) {
+						matched = true
+						break
+					}
+				}
+				if matched && (iss.CodeRefs == nil || len(iss.CodeRefs) == 0) {
 					iss.CodeRefs = []string{ch.RootCause}
 					a.logger.Printf("  CAUSAL: Issue %s → %s", iss.ID, ch.RootCause)
 					break

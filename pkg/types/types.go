@@ -56,13 +56,14 @@ type CollectResult struct {
 
 // RuleResult represents the outcome of a rule evaluation.
 type RuleResult struct {
-	RuleName    string   `json:"rule_name"`
-	Triggered   bool     `json:"triggered"`
-	Severity    Severity `json:"severity"`
-	Message     string   `json:"message"`
-	MetricName  string   `json:"metric_name"`
-	MetricValue float64  `json:"metric_value"`
-	Threshold   float64  `json:"threshold"`
+	RuleName    string            `json:"rule_name"`
+	Triggered   bool              `json:"triggered"`
+	Severity    Severity          `json:"severity"`
+	Message     string            `json:"message"`
+	MetricName  string            `json:"metric_name"`
+	MetricValue float64           `json:"metric_value"`
+	Threshold   float64           `json:"threshold"`
+	Labels      map[string]string `json:"labels,omitempty"` // from the matching metric
 }
 
 // Alert is what gets sent to notification channels.

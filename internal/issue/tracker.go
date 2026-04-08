@@ -3,6 +3,8 @@ package issue
 import (
 	"crypto/sha256"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,9 +34,15 @@ func NewTracker() *Tracker {
 }
 
 // Fingerprint generates a stable ID from symptom characteristics.
-// Format: hash(service + metricName + labels + severity)
+// Includes labels for per-entity isolation (e.g., different URLs get different issues).
 func Fingerprint(source, metricName string, severity types.Severity, labels map[string]string) string {
-	raw := fmt.Sprintf("%s|%s|%s|%v", source, metricName, severity, labels)
+	// Sort labels for deterministic hash
+	var labelParts []string
+	for k, v := range labels {
+		labelParts = append(labelParts, k+"="+v)
+	}
+	sort.Strings(labelParts)
+	raw := fmt.Sprintf("%s|%s|%s|%s", source, metricName, severity, strings.Join(labelParts, ","))
 	h := sha256.Sum256([]byte(raw))
 	return fmt.Sprintf("%x", h[:8])
 }
@@ -57,7 +65,7 @@ func (t *Tracker) ProcessCycleResults(cycleID string, ruleResults []types.RuleRe
 		if !rr.Triggered {
 			continue
 		}
-		fp := Fingerprint("rule", rr.MetricName, rr.Severity, nil)
+		fp := Fingerprint("rule", rr.MetricName, rr.Severity, rr.Labels)
 		activeFingerprints[fp] = rr
 	}
 
@@ -115,13 +123,13 @@ func (t *Tracker) ProcessCycleResults(cycleID string, ruleResults []types.RuleRe
 			case types.IssueDetecting:
 				// Was just a blip, never confirmed → remove
 				delete(t.issues, fp)
-			case types.IssueOpen, types.IssueAcked, types.IssueMonitoring:
+			case types.IssueOpen, types.IssueAcked, types.IssueMonitoring, types.IssueImproving:
 				if issue.ConsecutiveGood >= resolveThreshold {
 					resolvedTime := now
 					issue.ResolvedAt = &resolvedTime
 					t.transition(issue, types.IssueResolved, "Anomaly absent for sustained period", cycleID)
 					resolvedIssues = append(resolvedIssues, issue)
-				} else if issue.ConsecutiveGood >= 1 {
+				} else if issue.ConsecutiveGood >= 1 && issue.Status != types.IssueImproving {
 					t.transition(issue, types.IssueImproving, "Metrics improving", cycleID)
 					updatedIssues = append(updatedIssues, issue)
 				}

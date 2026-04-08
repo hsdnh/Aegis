@@ -1,12 +1,27 @@
 package storage
 
 import (
+	"fmt"
 	"math"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/hsdnh/ai-ops-agent/internal/ai"
 	"github.com/hsdnh/ai-ops-agent/pkg/types"
 )
+
+func metricKey(name string, labels map[string]string) string {
+	if len(labels) == 0 {
+		return name
+	}
+	var parts []string
+	for k, v := range labels {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	}
+	sort.Strings(parts)
+	return name + "{" + strings.Join(parts, ",") + "}"
+}
 
 // BaselineLearner accumulates metric samples and computes statistical baselines.
 // During the learning period (first 24-48h), it collects data without alerting.
@@ -31,15 +46,16 @@ func (bl *BaselineLearner) Ingest(metrics []types.Metric) error {
 		return err
 	}
 
-	// Recompute baselines for each metric
+	// Recompute baselines for each metric (keyed by name+labels)
 	seen := make(map[string]bool)
 	for _, m := range metrics {
-		if seen[m.Name] {
+		key := metricKey(m.Name, m.Labels)
+		if seen[key] {
 			continue
 		}
-		seen[m.Name] = true
+		seen[key] = true
 
-		series, err := bl.db.QueryMetricSeries(m.Name, time.Now().Add(-48*time.Hour))
+		series, err := bl.db.QueryMetricSeries(key, time.Now().Add(-48*time.Hour))
 		if err != nil || len(series) < 3 {
 			continue
 		}
@@ -66,7 +82,7 @@ func (bl *BaselineLearner) Ingest(metrics []types.Metric) error {
 		}
 		stdDev := math.Sqrt(variance)
 
-		bl.db.SaveBaseline(m.Name, Baseline{
+		bl.db.SaveBaseline(key, Baseline{
 			Mean:        mean,
 			StdDev:      stdDev,
 			Min:         minV,

@@ -1,6 +1,9 @@
 package dashboard
 
 import (
+	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -8,6 +11,20 @@ import (
 	"github.com/hsdnh/ai-ops-agent/internal/tracecollector"
 	"github.com/hsdnh/ai-ops-agent/pkg/types"
 )
+
+// MetricKey generates a composite key from metric name + labels.
+// e.g., "http.latency_ms{url=/v1/order}" vs "http.latency_ms{url=/v1/search}"
+func MetricKey(name string, labels map[string]string) string {
+	if len(labels) == 0 {
+		return name
+	}
+	var parts []string
+	for k, v := range labels {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	}
+	sort.Strings(parts)
+	return name + "{" + strings.Join(parts, ",") + "}"
+}
 
 // Store holds all data the dashboard needs. Thread-safe.
 // The agent pushes data here after each cycle; the dashboard reads it.
@@ -72,15 +89,16 @@ func (s *Store) PushSnapshot(snap *types.Snapshot) {
 		s.snapshots = s.snapshots[len(s.snapshots)-s.maxSnaps:]
 	}
 
-	// Update metric series
+	// Update metric series — keyed by name+labels for per-entity isolation
 	for _, r := range snap.Results {
 		for _, m := range r.Metrics {
-			pts := s.metricSeries[m.Name]
+			key := MetricKey(m.Name, m.Labels)
+			pts := s.metricSeries[key]
 			pts = append(pts, MetricPoint{Time: m.Timestamp, Value: m.Value})
 			if len(pts) > s.maxPoints {
 				pts = pts[len(pts)-s.maxPoints:]
 			}
-			s.metricSeries[m.Name] = pts
+			s.metricSeries[key] = pts
 		}
 	}
 }

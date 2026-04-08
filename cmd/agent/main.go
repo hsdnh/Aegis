@@ -13,11 +13,14 @@ import (
 	"github.com/hsdnh/ai-ops-agent/internal/agent"
 	"github.com/hsdnh/ai-ops-agent/internal/ai"
 	"github.com/hsdnh/ai-ops-agent/internal/alert"
+	"github.com/hsdnh/ai-ops-agent/internal/causal"
 	"github.com/hsdnh/ai-ops-agent/internal/collector"
 	"github.com/hsdnh/ai-ops-agent/internal/config"
 	"github.com/hsdnh/ai-ops-agent/internal/dashboard"
 	"github.com/hsdnh/ai-ops-agent/internal/issue"
 	"github.com/hsdnh/ai-ops-agent/internal/rule"
+	"github.com/hsdnh/ai-ops-agent/internal/scanner"
+	"github.com/hsdnh/ai-ops-agent/internal/storage"
 	"github.com/hsdnh/ai-ops-agent/pkg/types"
 	"github.com/robfig/cron/v3"
 )
@@ -80,7 +83,27 @@ func main() {
 	// Create agent
 	a := agent.New(cfg.Project, collectorRegistry, ruleEngine, depMap, alertMgr, issueTracker)
 
-	// Setup L2 AI analysis (if configured)
+	// Setup SQLite persistence + baseline learning
+	if cfg.Storage.Enabled {
+		dbPath := cfg.Storage.Path
+		if dbPath == "" {
+			dbPath = "./data/aiops.db"
+		}
+		os.MkdirAll("./data", 0755)
+		db, err := storage.Open(dbPath)
+		if err != nil {
+			log.Printf("WARNING: SQLite init failed: %v (running in memory-only mode)", err)
+		} else {
+			a.SetStorage(db)
+			// Load persisted issues on startup
+			if savedIssues, err := db.LoadOpenIssues(); err == nil && len(savedIssues) > 0 {
+				log.Printf("Restored %d issues from database", len(savedIssues))
+			}
+			log.Printf("SQLite persistence enabled: %s", dbPath)
+		}
+	}
+
+	// Setup L2 AI analysis
 	var aiClient *ai.Client
 	if cfg.AI.Enabled && cfg.AI.APIKey != "" {
 		aiClient = ai.NewClient(ai.Provider(cfg.AI.Provider), cfg.AI.APIKey, cfg.AI.Model)
@@ -92,6 +115,56 @@ func main() {
 		log.Printf("L2 AI analysis enabled (provider: %s, model: %s)", cfg.AI.Provider, cfg.AI.Model)
 	}
 
+	// Setup causal graph (from L0 scan if source_path configured)
+	if cfg.SourcePath != "" {
+		scanResult, err := scanner.ScanProject(cfg.SourcePath)
+		if err == nil {
+			cg := causal.NewGraph()
+			cg.BuildFromScan(scanResult)
+			a.SetCausalGraph(cg)
+			a.SetCodeContext(scanResult.FormatForAI())
+			log.Printf("Causal graph built: %d nodes, %d edges (from %s)",
+				cg.NodeCount(), cg.EdgeCount(), cfg.SourcePath)
+		} else {
+			log.Printf("WARNING: L0 scan failed: %v", err)
+		}
+	}
+
+	// Setup shadow verification
+	if len(cfg.Shadow) > 0 {
+		sv := causal.NewShadowVerifier(nil, nil, 200) // DB/Redis connected via collectors
+		for _, sc := range cfg.Shadow {
+			sv.AddCheck(causal.ShadowCheck{
+				Name: sc.Name, Type: sc.Type, Description: sc.Description,
+				Severity: sc.Severity, Query: sc.Query, Expect: sc.Expect,
+				SourceQuery: sc.SourceQuery, TargetQuery: sc.TargetQuery,
+				CompareMode: sc.CompareMode, Enabled: true,
+			})
+		}
+		a.SetShadowVerifier(sv)
+		log.Printf("Shadow verification enabled: %d checks", len(cfg.Shadow))
+	}
+
+	// Setup synthetic probes
+	if len(cfg.Probes) > 0 {
+		sr := causal.NewSyntheticRunner()
+		for _, pc := range cfg.Probes {
+			sr.AddProbe(causal.SyntheticProbe{
+				Name: pc.Name, Type: pc.Type, Enabled: true,
+				Config: causal.ProbeConfig{
+					URL: pc.URL, Method: pc.Method,
+					ExpectStatus: pc.ExpectStatus, ExpectBody: pc.ExpectBody,
+					RedisAddr: pc.RedisAddr, TimeoutSec: pc.TimeoutSec,
+				},
+			})
+		}
+		a.SetSyntheticRunner(sr)
+		log.Printf("Synthetic probes enabled: %d probes", len(cfg.Probes))
+	}
+
+	// Setup expectation model
+	a.SetExpectationModel(causal.NewExpectationModel(50))
+
 	// Setup dashboard
 	var store *dashboard.Store
 	var eventLog *dashboard.EventLog
@@ -99,25 +172,35 @@ func main() {
 		store = dashboard.NewStore(cfg.Project)
 		eventLog = dashboard.NewEventLog(500)
 
-		// Setup AI chat (if AI is configured)
 		var chatSvc *dashboard.ChatService
 		if aiClient != nil {
 			chatSvc = dashboard.NewChatService(aiClient, store, eventLog)
 		}
 
-		mgr := dashboard.NewManageService("", "./data", eventLog)
-		dashToken := os.Getenv("AIOPS_DASHBOARD_TOKEN") // set env var to enable auth
+		mgr := dashboard.NewManageService(cfg.SourcePath, "./data", eventLog)
+		dashToken := os.Getenv("AIOPS_DASHBOARD_TOKEN")
 		srv := dashboard.NewServer(store, *dashAddr, eventLog, chatSvc, mgr, dashToken)
 		if dashToken != "" {
 			log.Printf("Dashboard auth enabled (token required)")
 		}
+
+		// Register AI terminal if AI configured
+		if aiClient != nil {
+			terminal := dashboard.NewAITerminal(aiClient, store, eventLog)
+			srv.SetAITerminal(terminal)
+		}
+
+		// Register causal graph API if available
+		if a.CausalGraph() != nil {
+			srv.RegisterCausalAPI(causal.NewGraphAPI(a.CausalGraph()))
+		}
+
 		go func() {
 			if err := srv.Start(); err != nil {
 				log.Printf("Dashboard server error: %v", err)
 			}
 		}()
 
-		// Connect agent to dashboard (agent pushes data internally now)
 		a.SetDashboard(store, eventLog)
 	}
 

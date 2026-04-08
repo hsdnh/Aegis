@@ -71,6 +71,7 @@ func (e *Engine) Evaluate(metrics []types.Metric) []types.RuleResult {
 				MetricName:  metric.Name,
 				MetricValue: metric.Value,
 				Threshold:   rule.Threshold,
+				Labels:      metric.Labels, // pass through for Issue fingerprinting
 			})
 		}
 	}
