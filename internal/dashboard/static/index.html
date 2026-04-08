@@ -3,1101 +3,478 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Ops Agent</title>
+<title>AI Ops Agent 智能监控平台</title>
 <style>
-:root {
-  --bg-primary: #0f1117;
-  --bg-card: #1a1d27;
-  --bg-card-hover: #222636;
-  --border: #2a2e3d;
-  --text-primary: #e4e6f0;
-  --text-secondary: #8b8fa3;
-  --text-muted: #5c6070;
-  --accent: #6c5ce7;
-  --accent-glow: rgba(108,92,231,0.15);
-  --green: #00d68f;
-  --green-bg: rgba(0,214,143,0.1);
-  --yellow: #ffaa00;
-  --yellow-bg: rgba(255,170,0,0.1);
-  --red: #ff3d71;
-  --red-bg: rgba(255,61,113,0.1);
-  --blue: #3366ff;
-  --blue-bg: rgba(51,102,255,0.1);
-  --orange: #ff7b47;
-  --radius: 12px;
-  --shadow: 0 4px 24px rgba(0,0,0,0.3);
-}
-
-* { margin:0; padding:0; box-sizing:border-box; }
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  min-height: 100vh;
-}
-
-/* Header */
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 32px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-card);
-}
-.header-left { display:flex; align-items:center; gap:12px; }
-.logo {
-  width:36px; height:36px; border-radius:8px;
-  background: linear-gradient(135deg, var(--accent), #a855f7);
-  display:flex; align-items:center; justify-content:center;
-  font-size:18px; font-weight:700; color:#fff;
-}
-.header h1 { font-size:18px; font-weight:600; }
-.header-project { color:var(--text-secondary); font-size:13px; }
-.header-right { display:flex; align-items:center; gap:16px; }
-.status-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
-.status-dot.ok { background:var(--green); box-shadow:0 0 8px var(--green); }
-.status-dot.warn { background:var(--yellow); box-shadow:0 0 8px var(--yellow); }
-.status-dot.err { background:var(--red); box-shadow:0 0 8px var(--red); }
-.last-update { color:var(--text-muted); font-size:12px; }
-
-/* Grid */
-.grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  padding: 24px 32px;
-}
-.grid-wide { grid-column: span 2; }
-.grid-full { grid-column: span 4; }
-
-/* Stat Cards */
-.stat-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  transition: all 0.2s;
-}
-.stat-card:hover { background:var(--bg-card-hover); border-color:#3a3e5d; }
-.stat-label { font-size:12px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
-.stat-value { font-size:32px; font-weight:700; line-height:1; }
-.stat-sub { font-size:12px; color:var(--text-muted); margin-top:6px; }
-.stat-value.green { color:var(--green); }
-.stat-value.yellow { color:var(--yellow); }
-.stat-value.red { color:var(--red); }
-.stat-value.blue { color:var(--blue); }
-
-/* Panel */
-.panel {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-.panel-header {
-  display:flex; align-items:center; justify-content:space-between;
-  padding:16px 20px;
-  border-bottom:1px solid var(--border);
-}
-.panel-title { font-size:14px; font-weight:600; }
-.panel-badge {
-  font-size:11px; padding:2px 8px; border-radius:10px;
-  background:var(--accent-glow); color:var(--accent);
-}
-.panel-body { padding:16px 20px; max-height:400px; overflow-y:auto; }
-
-/* Issue list */
-.issue {
-  display:flex; gap:12px; padding:12px 0;
-  border-bottom:1px solid var(--border);
-}
-.issue:last-child { border-bottom:none; }
-.issue-severity {
-  width:6px; min-height:40px; border-radius:3px; flex-shrink:0;
-}
-.issue-severity.FATAL,.issue-severity.fatal { background:var(--red); }
-.issue-severity.CRITICAL,.issue-severity.critical { background:var(--orange); }
-.issue-severity.WARNING,.issue-severity.warning { background:var(--yellow); }
-.issue-severity.INFO,.issue-severity.info { background:var(--blue); }
-.issue-body { flex:1; min-width:0; }
-.issue-title { font-size:13px; font-weight:500; margin-bottom:4px; }
-.issue-meta { font-size:11px; color:var(--text-muted); display:flex; gap:12px; }
-.issue-status {
-  font-size:10px; padding:1px 6px; border-radius:4px;
-  font-weight:600; text-transform:uppercase;
-}
-.issue-status.OPEN { background:var(--red-bg); color:var(--red); }
-.issue-status.DETECTING { background:var(--yellow-bg); color:var(--yellow); }
-.issue-status.IMPROVING { background:var(--blue-bg); color:var(--blue); }
-.issue-status.RESOLVED { background:var(--green-bg); color:var(--green); }
-.issue-status.FLAPPING { background:var(--yellow-bg); color:var(--orange); }
-.issue-status.DATA_GAP { background:rgba(100,100,100,0.2); color:var(--text-muted); }
-
-/* Metric rows */
-.metric-row {
-  display:flex; align-items:center; justify-content:space-between;
-  padding:8px 0;
-  border-bottom:1px solid rgba(42,46,61,0.5);
-  font-size:13px;
-}
-.metric-row:last-child { border-bottom:none; }
-.metric-name { color:var(--text-secondary); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.metric-val { font-weight:600; font-variant-numeric:tabular-nums; margin-left:12px; }
-
-/* Rule indicators */
-.rule-row { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid rgba(42,46,61,0.5); }
-.rule-row:last-child { border-bottom:none; }
-.rule-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-.rule-dot.triggered { background:var(--red); box-shadow:0 0 6px var(--red); }
-.rule-dot.ok { background:var(--green); opacity:0.5; }
-.rule-name { font-size:13px; flex:1; }
-.rule-val { font-size:12px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
-
-/* AI Analysis */
-.ai-box {
-  background: linear-gradient(135deg, rgba(108,92,231,0.05), rgba(168,85,247,0.05));
-  border: 1px solid rgba(108,92,231,0.2);
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 12px;
-}
-.ai-summary { font-size:14px; line-height:1.6; margin-bottom:12px; }
-.ai-anomaly {
-  background:var(--bg-primary); border-radius:8px; padding:12px; margin-top:8px;
-}
-.ai-anomaly-title { font-size:13px; font-weight:600; margin-bottom:4px; }
-.ai-anomaly-cause { font-size:12px; color:var(--text-secondary); margin-bottom:6px; }
-.ai-suggestion { font-size:12px; color:var(--green); padding:2px 0; }
-.confidence-bar {
-  height:4px; border-radius:2px; background:var(--border); margin-top:8px;
-}
-.confidence-fill {
-  height:100%; border-radius:2px;
-  background: linear-gradient(90deg, var(--red), var(--yellow), var(--green));
-}
-
-/* Trace hot spots */
-.hotspot-bar-container { display:flex; align-items:center; gap:8px; padding:6px 0; }
-.hotspot-name { font-size:12px; width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.hotspot-bar-bg { flex:1; height:16px; background:var(--border); border-radius:3px; overflow:hidden; position:relative; }
-.hotspot-bar-fill { height:100%; border-radius:3px; background:linear-gradient(90deg, var(--accent), #a855f7); min-width:2px; }
-.hotspot-pct { font-size:11px; color:var(--text-muted); width:50px; text-align:right; }
-
-/* Logs */
-.log-entry { font-family:'Cascadia Code','Fira Code',monospace; font-size:11px; padding:3px 0; border-bottom:1px solid rgba(42,46,61,0.3); }
-.log-entry .level { font-weight:600; display:inline-block; width:55px; }
-.log-entry .level.ERROR { color:var(--red); }
-.log-entry .level.WARNING { color:var(--yellow); }
-.log-entry .msg { color:var(--text-secondary); }
-
-/* Chart area */
-.chart-area { height:120px; position:relative; }
-.chart-svg { width:100%; height:100%; }
-
-/* Empty state */
-.empty { text-align:center; padding:40px; color:var(--text-muted); font-size:13px; }
-
-/* Scrollbar */
-::-webkit-scrollbar { width:6px; }
-::-webkit-scrollbar-track { background:transparent; }
-::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
-::-webkit-scrollbar-thumb:hover { background:#3a3e5d; }
-
-/* Responsive */
-@media (max-width:1200px) { .grid { grid-template-columns:repeat(2,1fr); } .grid-full { grid-column:span 2; } }
-@media (max-width:768px) { .grid { grid-template-columns:1fr; padding:16px; } .grid-wide,.grid-full { grid-column:span 1; } .header { padding:12px 16px; } }
-
-/* Activity Feed */
-.feed-event { display:flex; gap:10px; padding:8px 0; border-bottom:1px solid rgba(42,46,61,0.5); font-size:12px; }
-.feed-event:last-child { border-bottom:none; }
-.feed-time { color:var(--text-muted); width:48px; flex-shrink:0; font-variant-numeric:tabular-nums; }
-.feed-icon { width:20px; text-align:center; flex-shrink:0; }
-.feed-msg { flex:1; color:var(--text-secondary); }
-.feed-msg.info { color:var(--text-secondary); }
-.feed-msg.warning { color:var(--yellow); }
-.feed-msg.error { color:var(--red); }
-.feed-msg.success { color:var(--green); }
-.feed-details { font-size:11px; color:var(--text-muted); margin-top:2px; white-space:pre-wrap; }
-.feed-cost { font-size:10px; color:var(--accent); margin-left:8px; }
-
-/* Chat */
-.chat-msg { margin-bottom:12px; }
-.chat-msg.user { text-align:right; }
-.chat-msg .bubble { display:inline-block; max-width:85%; padding:10px 14px; border-radius:12px; font-size:13px; line-height:1.5; text-align:left; white-space:pre-wrap; }
-.chat-msg.user .bubble { background:var(--accent); color:#fff; border-bottom-right-radius:4px; }
-.chat-msg.assistant .bubble { background:var(--bg-primary); color:var(--text-primary); border:1px solid var(--border); border-bottom-left-radius:4px; }
-.chat-msg .time { font-size:10px; color:var(--text-muted); margin-top:2px; }
-
-/* Metric annotations */
-.metric-annotation { font-size:11px; margin-left:8px; }
-.metric-annotation.ok { color:var(--green); }
-.metric-annotation.warning { color:var(--yellow); }
-.metric-annotation.critical { color:var(--red); }
-
-/* Management buttons */
-.mgmt-btn {
-  display:flex; align-items:center; gap:8px;
-  background:var(--bg-primary); border:1px solid var(--border); border-radius:8px;
-  padding:10px 16px; color:var(--text-primary); font-size:13px;
-  cursor:pointer; transition:all 0.15s; text-align:left;
-}
-.mgmt-btn:hover { border-color:var(--accent); background:var(--accent-glow); }
-.mgmt-btn:disabled { opacity:0.5; cursor:not-allowed; }
-.mgmt-btn-warn:hover { border-color:var(--yellow); background:var(--yellow-bg); }
-.mgmt-btn-danger:hover { border-color:var(--red); background:var(--red-bg); }
-.mgmt-icon { font-size:16px; }
-.mgmt-status-row { display:flex; justify-content:space-between; padding:4px 0; font-size:13px; }
-.mgmt-status-label { color:var(--text-muted); }
-.mgmt-status-val { font-weight:500; }
-.mgmt-status-val.ok { color:var(--green); }
-.mgmt-status-val.warn { color:var(--yellow); }
-
-/* Causal Chain */
-.causal-chain { margin-bottom:16px; background:var(--bg-primary); border-radius:8px; padding:14px; }
-.causal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
-.causal-symptom { font-size:13px; font-weight:600; color:var(--red); }
-.causal-root { font-size:12px; color:var(--accent); }
-.causal-conf { font-size:11px; color:var(--text-muted); }
-.causal-steps { position:relative; padding-left:20px; }
-.causal-step { position:relative; padding:6px 0 6px 16px; font-size:12px; color:var(--text-secondary); }
-.causal-step::before { content:''; position:absolute; left:-14px; top:12px; width:8px; height:8px; border-radius:50%; border:2px solid var(--border); background:var(--bg-card); z-index:1; }
-.causal-step:not(:last-child)::after { content:''; position:absolute; left:-11px; top:20px; bottom:-6px; width:2px; background:var(--border); }
-.causal-step.func::before { border-color:var(--accent); background:var(--accent); }
-.causal-step.metric::before { border-color:var(--red); background:var(--red); }
-.causal-step.redis::before { border-color:var(--orange); background:var(--orange); }
-.causal-step.sql::before { border-color:var(--blue); background:var(--blue); }
-.causal-step .file-ref { font-size:11px; color:var(--text-muted); font-family:monospace; }
-.causal-step .evidence { font-size:10px; color:var(--yellow); margin-top:2px; }
-.causal-arrow { color:var(--text-muted); font-size:11px; padding:2px 0 2px 16px; }
+:root{--bg:#0f1117;--card:#1a1d27;--card2:#222636;--border:#2a2e3d;--text:#e4e6f0;--text2:#8b8fa3;--muted:#5c6070;--accent:#6c5ce7;--glow:rgba(108,92,231,.15);--green:#00d68f;--gbg:rgba(0,214,143,.1);--yellow:#ffaa00;--ybg:rgba(255,170,0,.1);--red:#ff3d71;--rbg:rgba(255,61,113,.1);--blue:#3366ff;--bbg:rgba(51,102,255,.1);--orange:#ff7b47;--r:12px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card)}
+.hdr-l{display:flex;align-items:center;gap:10px}
+.logo{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#a855f7);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff}
+.hdr h1{font-size:16px;font-weight:600}
+.hdr-sub{color:var(--text2);font-size:12px}
+.hdr-r{display:flex;align-items:center;gap:12px}
+.hdr-r a{color:var(--accent);text-decoration:none;font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px}
+.hdr-r a:hover{border-color:var(--accent);background:var(--glow)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dot.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
+.dot.err{background:var(--red);box-shadow:0 0 6px var(--red)}
+.dot.warn{background:var(--yellow)}
+.ts{color:var(--muted);font-size:11px}
+.g{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px 24px}
+.g2{grid-column:span 2}.g4{grid-column:span 4}
+.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px;transition:.15s}
+.sc:hover{background:var(--card2);border-color:#3a3e5d}
+.sc-l{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.sc-v{font-size:28px;font-weight:700;line-height:1}
+.sc-s{font-size:11px;color:var(--muted);margin-top:4px}
+.sc-v.gr{color:var(--green)}.sc-v.ye{color:var(--yellow)}.sc-v.re{color:var(--red)}.sc-v.bl{color:var(--blue)}
+.p{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.ph{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer}
+.ph:hover{background:var(--card2)}
+.pt{font-size:13px;font-weight:600}
+.pb{font-size:10px;padding:2px 6px;border-radius:8px;background:var(--glow);color:var(--accent)}
+.pb.re{background:var(--rbg);color:var(--red)}.pb.gr{background:var(--gbg);color:var(--green)}.pb.ye{background:var(--ybg);color:var(--yellow)}
+.pc{padding:12px 16px;max-height:350px;overflow-y:auto}
+.emp{text-align:center;padding:30px;color:var(--muted);font-size:12px}
+.row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(42,46,61,.4);font-size:12px}
+.row:last-child{border-bottom:none}
+.tag{font-size:10px;padding:1px 5px;border-radius:3px;font-weight:600;text-transform:uppercase}
+.tag.OPEN,.tag.fatal{background:var(--rbg);color:var(--red)}
+.tag.DETECTING,.tag.warning{background:var(--ybg);color:var(--yellow)}
+.tag.IMPROVING{background:var(--bbg);color:var(--blue)}
+.tag.RESOLVED,.tag.ok,.tag.pass{background:var(--gbg);color:var(--green)}
+.tag.FLAPPING{background:var(--ybg);color:var(--orange)}
+.tag.fail{background:var(--rbg);color:var(--red)}
+.iss{padding:10px 0;border-bottom:1px solid var(--border)}
+.iss:last-child{border-bottom:none}
+.iss-t{font-size:13px;font-weight:500;margin-bottom:3px}
+.iss-m{font-size:11px;color:var(--text2);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.iss-rc{font-size:11px;color:var(--accent);margin-top:3px}
+.iss-code{font-size:10px;color:var(--muted);font-family:monospace}
+.btn{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text);font-size:11px;cursor:pointer;transition:.15s}
+.btn:hover{border-color:var(--accent);background:var(--glow)}
+.btn.sm{padding:2px 6px;font-size:10px}
+.btn.dn{border-color:var(--red)}.btn.dn:hover{background:var(--rbg)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.nd{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(42,46,61,.4);font-size:12px}
+.nd:last-child{border-bottom:none}
+.nd-n{flex:1;font-weight:500}
+.nd-v{color:var(--text2);font-variant-numeric:tabular-nums}
+.fe{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(42,46,61,.3);font-size:11px}
+.fe:last-child{border-bottom:none}
+.fe-t{color:var(--muted);width:44px;flex-shrink:0;font-variant-numeric:tabular-nums}
+.fe-i{width:18px;text-align:center;flex-shrink:0}
+.fe-m{flex:1;color:var(--text2)}
+.fe-m.info{color:var(--text2)}.fe-m.warning{color:var(--yellow)}.fe-m.error{color:var(--red)}.fe-m.success{color:var(--green)}
+.ann{font-size:10px;margin-left:6px}
+.ann.ok{color:var(--green)}.ann.warning{color:var(--yellow)}.ann.critical{color:var(--red)}
+input[type=text]{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:12px;outline:none;width:100%}
+input:focus{border-color:var(--accent)}
+.chat-u{text-align:right;margin:6px 0}
+.chat-a{margin:6px 0}
+.chat-b{display:inline-block;max-width:85%;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;white-space:pre-wrap}
+.chat-u .chat-b{background:var(--accent);color:#fff;border-bottom-right-radius:3px}
+.chat-a .chat-b{background:var(--bg);border:1px solid var(--border);border-bottom-left-radius:3px}
+.inv-s{background:var(--bg);border-radius:6px;padding:8px;margin:4px 0;font-size:11px}
+.inv-s .cmd{color:var(--accent);font-family:monospace;font-size:10px}
+.inv-s .out{color:var(--text2);font-size:10px;margin-top:2px;max-height:60px;overflow:hidden}
+.mgmt-r{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}
+.mgmt-l{color:var(--muted)}.mgmt-v{font-weight:500}
+@media(max-width:1200px){.g{grid-template-columns:repeat(2,1fr)}.g4{grid-column:span 2}}
+@media(max-width:768px){.g{grid-template-columns:1fr;padding:12px}.g2,.g4{grid-column:span 1}.hdr{padding:10px 12px}}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 </style>
 </head>
 <body>
 
-<div class="header">
-  <div class="header-left">
+<div class="hdr">
+  <div class="hdr-l">
     <div class="logo">A</div>
-    <div>
-      <h1>AI Ops Agent</h1>
-      <div class="header-project" id="project-name">Loading...</div>
-    </div>
+    <div><h1>AI Ops Agent 智能监控平台</h1><div class="hdr-sub" id="hdr-project">加载中...</div></div>
   </div>
-  <div class="header-right" style="display:flex;align-items:center;gap:16px;">
-    <a href="/topology.html" style="color:var(--accent);text-decoration:none;font-size:12px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;">Topology</a>
-    <a href="/flamegraph.html" style="color:var(--accent);text-decoration:none;font-size:12px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;">Flame</a>
-    <a href="/waterfall.html" style="color:var(--accent);text-decoration:none;font-size:12px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;">Waterfall</a>
-    <span class="status-dot" id="status-dot"></span>
-    <span class="last-update" id="last-update">--</span>
+  <div class="hdr-r">
+    <a href="/topology.html">拓扑图</a>
+    <a href="/flamegraph.html">火焰图</a>
+    <a href="/waterfall.html">瀑布图</a>
+    <span class="dot" id="hdr-dot"></span>
+    <span class="ts" id="hdr-ts">--</span>
   </div>
 </div>
 
-<!-- Stat Cards -->
-<div class="grid" id="stats-grid">
-  <div class="stat-card">
-    <div class="stat-label">System Health</div>
-    <div class="stat-value green" id="stat-health">--</div>
-    <div class="stat-sub" id="stat-health-sub"></div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">Open Issues</div>
-    <div class="stat-value" id="stat-issues">0</div>
-    <div class="stat-sub" id="stat-issues-sub"></div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">Triggered Rules</div>
-    <div class="stat-value" id="stat-rules">0</div>
-    <div class="stat-sub" id="stat-rules-sub"></div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">Metrics Collected</div>
-    <div class="stat-value blue" id="stat-metrics">0</div>
-    <div class="stat-sub" id="stat-metrics-sub"></div>
+<!-- 统计卡片 -->
+<div class="g" id="stats">
+  <div class="sc"><div class="sc-l">系统健康</div><div class="sc-v gr" id="s-health">--</div><div class="sc-s" id="s-health-s"></div></div>
+  <div class="sc"><div class="sc-l">活跃问题</div><div class="sc-v" id="s-issues">0</div><div class="sc-s" id="s-issues-s"></div></div>
+  <div class="sc"><div class="sc-l">触发规则</div><div class="sc-v" id="s-rules">0</div><div class="sc-s" id="s-rules-s"></div></div>
+  <div class="sc"><div class="sc-l">采集指标</div><div class="sc-v bl" id="s-metrics">0</div><div class="sc-s" id="s-metrics-s"></div></div>
+</div>
+
+<div class="g">
+
+<!-- 集群概览 -->
+<div class="p g4" id="cluster-panel">
+  <div class="ph"><span class="pt">📡 集群节点</span><span class="pb" id="cluster-count">0 在线</span></div>
+  <div class="pc" id="cluster-body"><div class="emp">单机模式运行中</div></div>
+</div>
+
+<!-- 问题追踪 -->
+<div class="p g2">
+  <div class="ph"><span class="pt">🔗 问题追踪</span><span class="pb re" id="issue-count">0</span></div>
+  <div class="pc" id="issues-body"><div class="emp">暂无问题 — 系统正常运行</div></div>
+</div>
+
+<!-- 规则状态 -->
+<div class="p g2">
+  <div class="ph"><span class="pt">⚡ 规则状态</span></div>
+  <div class="pc" id="rules-body"><div class="emp">等待首次采集...</div></div>
+</div>
+
+<!-- AI 分析 -->
+<div class="p g2">
+  <div class="ph"><span class="pt">🧠 AI 分析</span><span class="pb" id="ai-badge">L2</span></div>
+  <div class="pc" id="ai-body"><div class="emp">AI 分析将在检测到异常后启动</div></div>
+</div>
+
+<!-- 自主调查 -->
+<div class="p g2">
+  <div class="ph"><span class="pt">🕵️ 自主调查</span><span class="pb" id="inv-badge">自动</span></div>
+  <div class="pc" id="inv-body"><div class="emp">检测到严重异常时自动调查</div></div>
+</div>
+
+<!-- 关键指标 -->
+<div class="p g4">
+  <div class="ph"><span class="pt">📊 关键指标</span></div>
+  <div class="pc" id="metrics-body"><div class="emp">等待首次采集...</div></div>
+</div>
+
+<!-- 数据验证 -->
+<div class="p g2">
+  <div class="ph"><span class="pt">✅ 数据验证</span></div>
+  <div class="pc" id="verify-body"><div class="emp">验证窗口期间运行</div></div>
+</div>
+
+<!-- 健康探测 -->
+<div class="p g2">
+  <div class="ph"><span class="pt">🧪 健康探测</span></div>
+  <div class="pc" id="probes-body"><div class="emp">未配置探测项目</div></div>
+</div>
+
+<!-- 实时动态 -->
+<div class="p g2">
+  <div class="ph"><span class="pt">🔬 实时动态</span><span class="pb gr">实时</span></div>
+  <div class="pc" id="feed-body" style="max-height:300px"><div class="emp">等待首次监控周期...</div></div>
+</div>
+
+<!-- AI 助手 -->
+<div class="p g2">
+  <div class="ph"><span class="pt">💬 AI 助手</span></div>
+  <div style="padding:0">
+    <div id="chat-msgs" style="padding:12px 16px;max-height:250px;overflow-y:auto"><div class="emp">输入问题，AI 帮你分析系统状态</div></div>
+    <div style="display:flex;gap:6px;padding:10px 16px;border-top:1px solid var(--border)">
+      <input type="text" id="chat-in" placeholder="例如: 队列为什么堆积了?" onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="btn" onclick="sendChat()">发送</button>
+    </div>
   </div>
 </div>
 
-<!-- Main Panels -->
-<div class="grid">
+<!-- 错误日志 -->
+<div class="p g4">
+  <div class="ph"><span class="pt">📋 错误日志</span><span class="pb" id="log-count">0</span></div>
+  <div class="pc" id="logs-body" style="max-height:200px;font-family:monospace;font-size:11px"><div class="emp">暂无错误日志</div></div>
+</div>
 
-  <!-- Issues Panel -->
-  <div class="panel grid-wide">
-    <div class="panel-header">
-      <span class="panel-title">Issues</span>
-      <span class="panel-badge" id="issue-count">0</span>
-    </div>
-    <div class="panel-body" id="issues-body">
-      <div class="empty">No issues detected</div>
-    </div>
-  </div>
-
-  <!-- Rules Panel -->
-  <div class="panel grid-wide">
-    <div class="panel-header">
-      <span class="panel-title">Rule Status</span>
-    </div>
-    <div class="panel-body" id="rules-body">
-      <div class="empty">No rules evaluated yet</div>
-    </div>
-  </div>
-
-  <!-- Causal Chain Panel -->
-  <div class="panel grid-full">
-    <div class="panel-header">
-      <span class="panel-title">Causal Chain Trace</span>
-      <span class="panel-badge" id="causal-count">0</span>
-    </div>
-    <div class="panel-body" id="causal-body">
-      <div class="empty">No anomalies to trace — system healthy</div>
-    </div>
-  </div>
-
-  <!-- AI Analysis Panel -->
-  <div class="panel grid-wide">
-    <div class="panel-header">
-      <span class="panel-title">AI Analysis</span>
-      <span class="panel-badge" id="ai-badge">L2</span>
-    </div>
-    <div class="panel-body" id="ai-body">
-      <div class="empty">AI analysis not yet available</div>
-    </div>
-  </div>
-
-  <!-- Trace Hot Spots -->
-  <div class="panel grid-wide">
-    <div class="panel-header">
-      <span class="panel-title">Trace Hot Spots</span>
-      <span class="panel-badge" id="trace-badge">SDK</span>
-    </div>
-    <div class="panel-body" id="trace-body">
-      <div class="empty">No trace data available</div>
-    </div>
-  </div>
-
-  <!-- Metrics Panel -->
-  <div class="panel grid-full">
-    <div class="panel-header">
-      <span class="panel-title">Key Metrics</span>
-    </div>
-    <div class="panel-body" id="metrics-body">
-      <div class="empty">Waiting for first collection cycle...</div>
-    </div>
-  </div>
-
-  <!-- Error Logs Panel -->
-  <div class="panel grid-full">
-    <div class="panel-header">
-      <span class="panel-title">Recent Error Logs</span>
-      <span class="panel-badge" id="log-count">0</span>
-    </div>
-    <div class="panel-body" id="logs-body" style="max-height:250px;">
-      <div class="empty">No error logs</div>
-    </div>
-  </div>
-
-  <!-- AI Activity Feed -->
-  <div class="panel grid-wide">
-    <div class="panel-header">
-      <span class="panel-title">AI Activity Feed</span>
-      <span class="panel-badge" style="background:rgba(0,214,143,0.15);color:var(--green);" id="feed-live">Live</span>
-    </div>
-    <div class="panel-body" id="feed-body" style="max-height:400px;">
-      <div class="empty">Waiting for first monitoring cycle...</div>
-    </div>
-  </div>
-
-  <!-- AI Chat -->
-  <div class="panel grid-wide">
-    <div class="panel-header">
-      <span class="panel-title">Ask AI</span>
-      <span class="panel-badge">Chat</span>
-    </div>
-    <div class="panel-body" id="chat-body" style="max-height:350px;display:flex;flex-direction:column;">
-      <div id="chat-messages" style="flex:1;overflow-y:auto;margin-bottom:12px;">
-        <div class="empty">Ask anything about your system...</div>
+<!-- 系统管理 -->
+<div class="p g4">
+  <div class="ph"><span class="pt">⚙️ 系统管理</span></div>
+  <div class="pc">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+      <!-- 状态 -->
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px">运行状态</div>
+        <div id="mgmt-status">加载中...</div>
       </div>
-      <div style="display:flex;gap:8px;">
-        <input type="text" id="chat-input" placeholder="e.g. 队列为什么突然涨到5000?"
-          style="flex:1;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text-primary);font-size:13px;outline:none;"
-          onkeydown="if(event.key==='Enter')sendChat()">
-        <button onclick="sendChat()"
-          style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-size:13px;font-weight:500;white-space:nowrap;">
-          Send
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- AI Terminal -->
-  <div class="panel grid-full">
-    <div class="panel-header">
-      <span class="panel-title">AI Terminal</span>
-      <span class="panel-badge" style="background:rgba(108,92,231,0.2);color:var(--accent);">SRE</span>
-    </div>
-    <div class="panel-body" style="padding:0;">
-      <div id="terminal-messages" style="padding:16px 20px;max-height:350px;overflow-y:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:12px;">
-        <div style="color:var(--accent);margin-bottom:8px;">Welcome to AI Terminal. I can investigate issues on this server.</div>
-        <div style="color:var(--text-muted);margin-bottom:12px;">Try: "check if Redis is healthy" or "show recent error logs" or "why is the queue backed up?"</div>
-      </div>
-      <div style="display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--border);">
-        <span style="color:var(--accent);line-height:36px;font-family:monospace;">$</span>
-        <input type="text" id="terminal-input" placeholder="Ask the AI to investigate..."
-          style="flex:1;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text-primary);font-family:'Cascadia Code','Fira Code',monospace;font-size:12px;outline:none;"
-          onkeydown="if(event.key==='Enter')sendTerminal()">
-        <button onclick="sendTerminal()"
-          style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:12px;">Run</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Management Panel -->
-  <div class="panel grid-full">
-    <div class="panel-header">
-      <span class="panel-title">Management</span>
-      <span class="panel-badge">Settings</span>
-    </div>
-    <div class="panel-body" id="manage-body">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
-        <!-- Status -->
-        <div>
-          <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:12px;text-transform:uppercase;">Agent Status</div>
-          <div id="manage-status" style="font-size:13px;color:var(--text-secondary);">Loading...</div>
-        </div>
-        <!-- Actions -->
-        <div>
-          <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:12px;text-transform:uppercase;">Actions</div>
-          <div style="display:flex;flex-direction:column;gap:8px;">
-            <button class="mgmt-btn" onclick="manageAction('probes/install')">
-              <span class="mgmt-icon">🔧</span> Install SDK Probes
-            </button>
-            <button class="mgmt-btn mgmt-btn-warn" onclick="manageAction('probes/strip')">
-              <span class="mgmt-icon">🧹</span> Strip SDK Probes (Restore Code)
-            </button>
-            <button class="mgmt-btn" onclick="triggerTrace()">
-              <span class="mgmt-icon">🔬</span> Trigger Trace Window (10s)
-            </button>
-            <button class="mgmt-btn mgmt-btn-danger" onclick="if(confirm('Delete all collected data?'))manageAction('data/clean')">
-              <span class="mgmt-icon">🗑️</span> Clean Data Directory
-            </button>
-          </div>
+      <!-- 操作 -->
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px">探针管理</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <button class="btn" onclick="mgmtAction('probes/install')">🔧 安装 SDK 探针</button>
+          <button class="btn dn" onclick="mgmtAction('probes/strip')">🧹 卸载探针(还原代码)</button>
+          <button class="btn" onclick="triggerTrace()">🔬 触发追踪窗口(10秒)</button>
         </div>
       </div>
-      <!-- Action output -->
-      <div id="manage-output" style="display:none;margin-top:16px;background:var(--bg-primary);border-radius:8px;padding:12px;font-family:monospace;font-size:11px;color:var(--text-secondary);max-height:200px;overflow-y:auto;white-space:pre-wrap;"></div>
+      <!-- 维护窗口 -->
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px">维护窗口</div>
+        <div id="silence-body" style="margin-bottom:6px"><span style="color:var(--muted);font-size:11px">无活跃静默</span></div>
+        <button class="btn" onclick="createSilence()">🔇 新建静默(2小时)</button>
+        <div style="margin-top:8px">
+          <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:4px">基线学习</div>
+          <div id="baseline-status" style="font-size:11px;color:var(--muted)">加载中...</div>
+        </div>
+      </div>
     </div>
+    <!-- 配置体检 -->
+    <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+      <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:6px">配置体检</div>
+      <div id="preflight-body" style="display:flex;flex-wrap:wrap;gap:6px"><span style="color:var(--muted);font-size:11px">启动时自动检测</span></div>
+    </div>
+    <!-- 操作输出 -->
+    <div id="mgmt-out" style="display:none;margin-top:8px;background:var(--bg);border-radius:6px;padding:8px;font-family:monospace;font-size:10px;color:var(--text2);max-height:150px;overflow-y:auto;white-space:pre-wrap"></div>
   </div>
+</div>
 
 </div>
 
 <script>
-const API = '';
-let refreshInterval = 10000; // 10 seconds
+const A='';let RI=10000,lastEvtID=0;
+async function F(u){try{const r=await fetch(A+u);return await r.json()}catch(e){return null}}
+function T(ts){if(!ts)return'--';return new Date(ts).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+function H(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function fmtV(n,v){if(n.includes('bytes')||n.includes('memory'))return(v/1048576).toFixed(1)+'MB';if(n.includes('latency')||n.includes('_ms'))return v.toFixed(0)+'ms';if(n.includes('alive'))return v===1?'正常':'断开';if(v>=1e6)return(v/1e6).toFixed(1)+'M';if(v>=1e3)return(v/1e3).toFixed(1)+'K';return v.toFixed(v%1===0?0:2)}
+function sevN(s){const m={'0':'信息','1':'警告','2':'严重','3':'致命'};return m[s]||s||'信息'}
 
-async function fetchJSON(url) {
-  try {
-    const res = await fetch(API + url);
-    return await res.json();
-  } catch(e) { return null; }
+// === 概览 ===
+async function rOverview(){
+  const d=await F('/api/overview');if(!d)return;
+  document.getElementById('hdr-project').textContent=d.project_name||'未知项目';
+  document.getElementById('hdr-ts').textContent=d.timestamp?T(d.timestamp):'--';
+  const dot=document.getElementById('hdr-dot'),h=document.getElementById('s-health');
+  if(d.triggered_rules>0||d.open_issue_count>0){dot.className='dot err';h.textContent='异常';h.className='sc-v re'}
+  else{dot.className='dot ok';h.textContent='健康';h.className='sc-v gr'}
+  if(d.snapshot_health)document.getElementById('s-health-s').textContent=d.snapshot_health.success_collectors+'/'+d.snapshot_health.total_collectors+' 采集器正常';
+  const ie=document.getElementById('s-issues');ie.textContent=d.open_issue_count;ie.className='sc-v '+(d.open_issue_count>0?'re':'gr');
+  const re=document.getElementById('s-rules');re.textContent=d.triggered_rules;re.className='sc-v '+(d.triggered_rules>0?'ye':'gr');
+  document.getElementById('s-metrics').textContent=d.total_metrics;
+  document.getElementById('s-metrics-s').textContent=d.uptime_seconds?'运行: '+fmtDur(d.uptime_seconds):'';
 }
-
-function formatTime(ts) {
-  if (!ts) return '--';
-  const d = new Date(ts);
-  return d.toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
-}
-
-function formatDuration(seconds) {
-  if (seconds < 60) return seconds + 's';
-  if (seconds < 3600) return Math.floor(seconds/60) + 'm';
-  return Math.floor(seconds/3600) + 'h ' + Math.floor((seconds%3600)/60) + 'm';
-}
-
-function severityColor(sev) {
-  const s = (sev||'').toString().toUpperCase();
-  if (s === '3' || s === 'FATAL') return 'var(--red)';
-  if (s === '2' || s === 'CRITICAL') return 'var(--orange)';
-  if (s === '1' || s === 'WARNING') return 'var(--yellow)';
-  return 'var(--blue)';
-}
-
-function severityName(sev) {
-  const map = {'0':'INFO','1':'WARNING','2':'CRITICAL','3':'FATAL'};
-  return map[sev] || sev || 'INFO';
-}
-
-// --- Render functions ---
-
-async function refreshOverview() {
-  const data = await fetchJSON('/api/overview');
-  if (!data) return;
-
-  document.getElementById('project-name').textContent = data.project_name || 'Unknown';
-
-  const dot = document.getElementById('status-dot');
-  const health = document.getElementById('stat-health');
-  const healthSub = document.getElementById('stat-health-sub');
-
-  if (data.triggered_rules > 0 || data.open_issue_count > 0) {
-    dot.className = 'status-dot err';
-    health.textContent = 'ALERT';
-    health.className = 'stat-value red';
-  } else if (data.snapshot_health && data.snapshot_health.completeness < 1) {
-    dot.className = 'status-dot warn';
-    health.textContent = 'DEGRADED';
-    health.className = 'stat-value yellow';
-  } else {
-    dot.className = 'status-dot ok';
-    health.textContent = 'HEALTHY';
-    health.className = 'stat-value green';
-  }
-
-  if (data.snapshot_health) {
-    healthSub.textContent = `${data.snapshot_health.success_collectors}/${data.snapshot_health.total_collectors} collectors OK`;
-  }
-
-  document.getElementById('last-update').textContent = data.timestamp ? formatTime(data.timestamp) : '--';
-
-  const issueEl = document.getElementById('stat-issues');
-  issueEl.textContent = data.open_issue_count;
-  issueEl.className = 'stat-value ' + (data.open_issue_count > 0 ? 'red' : 'green');
-
-  const rulesEl = document.getElementById('stat-rules');
-  rulesEl.textContent = data.triggered_rules;
-  rulesEl.className = 'stat-value ' + (data.triggered_rules > 0 ? 'yellow' : 'green');
-  document.getElementById('stat-rules-sub').textContent = data.has_ai_analysis ? 'AI analysis active' : '';
-
-  document.getElementById('stat-metrics').textContent = data.total_metrics;
-  document.getElementById('stat-metrics-sub').textContent = data.uptime_seconds ? 'Uptime: ' + formatDuration(data.uptime_seconds) : '';
-}
-
-async function refreshIssues() {
-  const issues = await fetchJSON('/api/issues');
-  const body = document.getElementById('issues-body');
-  const badge = document.getElementById('issue-count');
-
-  if (!issues || !Array.isArray(issues) || issues.length === 0) {
-    body.innerHTML = '<div class="empty">No open issues</div>';
-    badge.textContent = '0';
-    return;
-  }
-
-  badge.textContent = issues.length;
-  body.innerHTML = issues.map(iss => `
-    <div class="issue">
-      <div class="issue-severity ${severityName(iss.severity)}"></div>
-      <div class="issue-body">
-        <div class="issue-title">${iss.title || 'Untitled'}</div>
-        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">${iss.summary || ''}</div>
-        ${iss.root_cause ? `<div style="font-size:11px;color:var(--accent);">Root cause: ${iss.root_cause}</div>` : ''}
-        <div class="issue-meta">
-          <span class="issue-status ${iss.status}">${iss.status}</span>
-          <span>Since ${formatTime(iss.first_seen_at)}</span>
-          <span>Confidence: ${iss.confidence ? (iss.confidence*100).toFixed(0)+'%' : 'N/A'}</span>
-          ${iss.reopen_count > 0 ? `<span style="color:var(--orange);">Reopened x${iss.reopen_count}</span>` : ''}
-        </div>
-      </div>
-    </div>
-  `).join('');
-}
-
-async function refreshRules() {
-  const rules = await fetchJSON('/api/rules');
-  const body = document.getElementById('rules-body');
-
-  if (!rules || !Array.isArray(rules) || rules.length === 0) {
-    body.innerHTML = '<div class="empty">No rules evaluated</div>';
-    return;
-  }
-
-  body.innerHTML = rules.map(r => `
-    <div class="rule-row">
-      <div class="rule-dot ${r.triggered ? 'triggered' : 'ok'}"></div>
-      <div class="rule-name">${r.rule_name}</div>
-      <div class="rule-val">${r.metric_value.toFixed(1)} / ${r.threshold.toFixed(1)}</div>
-    </div>
-  `).join('');
-}
-
-async function refreshAnalysis() {
-  const data = await fetchJSON('/api/analysis');
-  const body = document.getElementById('ai-body');
-
-  if (!data || data.status === 'no_analysis') {
-    body.innerHTML = '<div class="empty">AI analysis will appear after the first anomaly is detected</div>';
-    return;
-  }
-
-  let html = '';
-  if (data.health_summary) {
-    html += `<div class="ai-box">
-      <div class="ai-summary">${data.health_summary}</div>
-      <div class="confidence-bar"><div class="confidence-fill" style="width:${(data.confidence||0)*100}%"></div></div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">
-        Confidence: ${((data.confidence||0)*100).toFixed(0)}% | Rounds: ${data.rounds||1} | Tokens: ${data.total_input_tokens||0}+${data.total_output_tokens||0}
-      </div>
-    </div>`;
-  }
-
-  if (data.anomalies && data.anomalies.length > 0) {
-    html += data.anomalies.map(a => `
-      <div class="ai-anomaly">
-        <div class="ai-anomaly-title" style="color:${severityColor(a.severity)}">${a.title}</div>
-        <div class="ai-anomaly-cause">${a.root_cause}</div>
-        ${(a.evidence||[]).map(e => `<div style="font-size:11px;color:var(--text-muted);padding:1px 0;">- ${e}</div>`).join('')}
-        ${(a.suggestions||[]).map(s => `<div class="ai-suggestion">→ ${s}</div>`).join('')}
-        ${(a.code_refs||[]).map(c => `<div style="font-size:11px;color:var(--accent);">📍 ${c}</div>`).join('')}
-      </div>
-    `).join('');
-  }
-
-  body.innerHTML = html || '<div class="empty">No anomalies detected by AI</div>';
-}
-
-async function refreshTrace() {
-  const data = await fetchJSON('/api/trace');
-  const body = document.getElementById('trace-body');
-
-  if (!data || data.status === 'no_trace') {
-    body.innerHTML = '<div class="empty">No trace data — waiting for SDK window</div>';
-    return;
-  }
-
-  let html = `<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
-    Window: ${data.snapshot?.trigger || '?'} | Spans: ${data.snapshot?.span_count || 0} |
-    Goroutines: ${data.snapshot?.goroutines || 0} | Heap: ${data.snapshot?.heap_alloc_mb || 0}MB
-  </div>`;
-
-  if (data.hot_spots && data.hot_spots.length > 0) {
-    const maxPct = Math.max(...data.hot_spots.map(h => h.pct_of_total), 1);
-    html += data.hot_spots.slice(0, 10).map(h => `
-      <div class="hotspot-bar-container">
-        <div class="hotspot-name" title="${h.func_name}">${h.func_name || 'func_'+h.func_id}</div>
-        <div class="hotspot-bar-bg">
-          <div class="hotspot-bar-fill" style="width:${(h.pct_of_total/maxPct)*100}%"></div>
-        </div>
-        <div class="hotspot-pct">${h.pct_of_total.toFixed(1)}%</div>
-      </div>
-    `).join('');
-  }
-
-  if (data.anomalies && data.anomalies.length > 0) {
-    html += '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">';
-    html += data.anomalies.map(a => `
-      <div style="font-size:12px;padding:4px 0;">
-        <span style="color:${a.severity==='critical'?'var(--red)':'var(--yellow)'};">[${a.type}]</span>
-        ${a.description}
-      </div>
-    `).join('');
-    html += '</div>';
-  }
-
-  body.innerHTML = html;
-}
-
-async function refreshMetrics() {
-  const metrics = await fetchJSON('/api/metrics');
-  const body = document.getElementById('metrics-body');
-
-  if (!metrics || !Array.isArray(metrics) || metrics.length === 0) {
-    body.innerHTML = '<div class="empty">No metrics collected yet</div>';
-    return;
-  }
-
-  // Group by source
-  const groups = {};
-  metrics.forEach(m => {
-    const src = m.source || 'unknown';
-    if (!groups[src]) groups[src] = [];
-    groups[src].push(m);
-  });
-
-  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">';
-  for (const [src, mets] of Object.entries(groups)) {
-    html += `<div>
-      <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:8px;text-transform:uppercase;">${src}</div>`;
-    mets.forEach(m => {
-      const val = m.value;
-      let color = 'var(--text-primary)';
-      html += `<div class="metric-row">
-        <div class="metric-name" title="${m.name}">${m.name.replace(/^[^.]+\./,'')}</div>
-        <div class="metric-val" style="color:${color}">${formatMetricValue(m.name, val)}</div>
-      </div>`;
-    });
-    html += '</div>';
-  }
-  html += '</div>';
-  body.innerHTML = html;
-}
-
-async function refreshLogs() {
-  const logs = await fetchJSON('/api/logs');
-  const body = document.getElementById('logs-body');
-  const badge = document.getElementById('log-count');
-
-  if (!logs || !Array.isArray(logs) || logs.length === 0) {
-    body.innerHTML = '<div class="empty">No error logs in this cycle</div>';
-    badge.textContent = '0';
-    return;
-  }
-
-  badge.textContent = logs.length;
-  body.innerHTML = logs.slice(0, 100).map(l => `
-    <div class="log-entry">
-      <span class="level ${l.level}">${l.level}</span>
-      <span class="msg">${escapeHtml(l.message).substring(0, 200)}</span>
-    </div>
-  `).join('');
-}
-
-function formatMetricValue(name, val) {
-  if (name.includes('bytes') || name.includes('memory')) return (val/1024/1024).toFixed(1) + ' MB';
-  if (name.includes('latency') || name.includes('_ms')) return val.toFixed(0) + ' ms';
-  if (name.includes('alive') || name.includes('connection')) return val === 1 ? 'OK' : 'DOWN';
-  if (val >= 1000000) return (val/1000000).toFixed(1) + 'M';
-  if (val >= 1000) return (val/1000).toFixed(1) + 'K';
-  return val.toFixed(val % 1 === 0 ? 0 : 2);
-}
-
-function escapeHtml(s) {
-  const div = document.createElement('div');
-  div.textContent = s;
-  return div.innerHTML;
-}
-
-// --- Activity Feed ---
-let lastEventID = 0;
-
-async function refreshFeed() {
-  const events = await fetchJSON(`/api/events/poll?after=${lastEventID}`);
-  if (!events || !Array.isArray(events) || events.length === 0) return;
-
-  const body = document.getElementById('feed-body');
-  if (body.querySelector('.empty')) body.innerHTML = '';
-
-  events.forEach(evt => {
-    if (evt.id > lastEventID) lastEventID = evt.id;
-    const div = document.createElement('div');
-    div.className = 'feed-event';
-    div.innerHTML = `
-      <div class="feed-time">${formatTime(evt.timestamp)}</div>
-      <div class="feed-icon">${evt.icon || '•'}</div>
-      <div class="feed-msg ${evt.severity || 'info'}">
-        ${escapeHtml(evt.message)}
-        ${evt.cost ? `<span class="feed-cost">${evt.cost}</span>` : ''}
-        ${evt.details ? `<div class="feed-details">${escapeHtml(evt.details)}</div>` : ''}
-      </div>
-    `;
-    body.insertBefore(div, body.firstChild);
-  });
-
-  // Keep max 100 entries in DOM
-  while (body.children.length > 100) {
-    body.removeChild(body.lastChild);
-  }
-}
-
-// --- AI Chat ---
-let chatLoading = false;
-
-async function sendChat() {
-  const input = document.getElementById('chat-input');
-  const msg = input.value.trim();
-  if (!msg || chatLoading) return;
-
-  input.value = '';
-  chatLoading = true;
-
-  const msgsDiv = document.getElementById('chat-messages');
-  if (msgsDiv.querySelector('.empty')) msgsDiv.innerHTML = '';
-
-  // Add user message
-  msgsDiv.innerHTML += `<div class="chat-msg user"><div class="bubble">${escapeHtml(msg)}</div><div class="time">${formatTime(new Date())}</div></div>`;
-
-  // Add loading indicator
-  const loadingID = 'chat-loading-' + Date.now();
-  msgsDiv.innerHTML += `<div class="chat-msg assistant" id="${loadingID}"><div class="bubble" style="color:var(--text-muted)">Thinking...</div></div>`;
-  msgsDiv.scrollTop = msgsDiv.scrollHeight;
-
-  try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({message: msg})
-    });
-    const data = await res.json();
-
-    const loadingEl = document.getElementById(loadingID);
-    if (loadingEl) {
-      if (data.error) {
-        loadingEl.querySelector('.bubble').innerHTML = `<span style="color:var(--red)">Error: ${escapeHtml(data.error)}</span>`;
-      } else {
-        loadingEl.querySelector('.bubble').textContent = data.response;
-        loadingEl.innerHTML += `<div class="time">${formatTime(new Date())}</div>`;
-      }
-    }
-  } catch(e) {
-    const loadingEl = document.getElementById(loadingID);
-    if (loadingEl) loadingEl.querySelector('.bubble').innerHTML = `<span style="color:var(--red)">Network error</span>`;
-  }
-
-  chatLoading = false;
-  msgsDiv.scrollTop = msgsDiv.scrollHeight;
-}
-
-// --- Annotated Metrics (enhanced) ---
-async function refreshMetricsAnnotated() {
-  const [metrics, annotations] = await Promise.all([
-    fetchJSON('/api/metrics'),
-    fetchJSON('/api/metrics/annotations'),
-  ]);
-  const body = document.getElementById('metrics-body');
-
-  if (!metrics || !Array.isArray(metrics) || metrics.length === 0) {
-    body.innerHTML = '<div class="empty">No metrics collected yet</div>';
-    return;
-  }
-
-  // Build annotation lookup
-  const annMap = {};
-  if (annotations && Array.isArray(annotations)) {
-    annotations.forEach(a => { annMap[a.metric_name] = a; });
-  }
-
-  const groups = {};
-  metrics.forEach(m => {
-    const src = m.source || 'unknown';
-    if (!groups[src]) groups[src] = [];
-    groups[src].push(m);
-  });
-
-  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:16px;">';
-  for (const [src, mets] of Object.entries(groups)) {
-    html += `<div>
-      <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:8px;text-transform:uppercase;">${src}</div>`;
-    mets.forEach(m => {
-      const ann = annMap[m.name];
-      const annHTML = ann ? `<span class="metric-annotation ${ann.status}">${ann.comment}</span>` : '';
-      html += `<div class="metric-row">
-        <div class="metric-name" title="${m.name}">${m.name.replace(/^[^.]+\./,'')}</div>
-        <div style="display:flex;align-items:center;">
-          <div class="metric-val">${formatMetricValue(m.name, m.value)}</div>
-          ${annHTML}
-        </div>
-      </div>`;
-    });
-    html += '</div>';
-  }
-  html += '</div>';
-  body.innerHTML = html;
-}
-
-// --- Causal Chain ---
-
-async function refreshCausalChains() {
-  const chains = await fetchJSON('/api/causal/chains');
-  const body = document.getElementById('causal-body');
-  const badge = document.getElementById('causal-count');
-
-  if (!chains || !Array.isArray(chains) || chains.length === 0) {
-    body.innerHTML = '<div class="empty">No anomalies to trace — system healthy</div>';
-    badge.textContent = '0';
-    return;
-  }
-
-  badge.textContent = chains.length;
-  body.innerHTML = chains.map(ch => {
-    const steps = (ch.chain || []).map(step => {
-      let cls = 'causal-step';
-      if (step.node_type === 'function') cls += ' func';
-      else if (step.node_type === 'metric') cls += ' metric';
-      else if (step.node_type === 'redis_key') cls += ' redis';
-      else if (step.node_type === 'sql_table') cls += ' sql';
-
-      let html = `<div class="${cls}">`;
-      html += `<div>${escapeHtml(step.description)}</div>`;
-      if (step.file) html += `<div class="file-ref">${step.file}:${step.line}</div>`;
-      if (step.evidence) html += `<div class="evidence">${escapeHtml(step.evidence)}</div>`;
-      html += '</div>';
-      return html;
-    }).join('');
-
-    return `
-      <div class="causal-chain">
-        <div class="causal-header">
-          <div>
-            <div class="causal-symptom">${escapeHtml(ch.symptom)}</div>
-            <div class="causal-root">Root cause: ${escapeHtml(ch.root_cause || 'unknown')}</div>
-          </div>
-          <div class="causal-conf">Confidence: ${((ch.confidence||0)*100).toFixed(0)}%</div>
-        </div>
-        <div class="causal-steps">${steps}</div>
-      </div>
-    `;
+function fmtDur(s){if(s<60)return s+'秒';if(s<3600)return Math.floor(s/60)+'分钟';return Math.floor(s/3600)+'小时'+Math.floor((s%3600)/60)+'分'}
+
+// === 集群 ===
+async function rCluster(){
+  const d=await F('/api/cluster/nodes');if(!d||!d.nodes||d.nodes.length===0){document.getElementById('cluster-count').textContent='单机';return}
+  document.getElementById('cluster-count').textContent=d.online_count+'/'+d.total+' 在线';
+  const b=document.getElementById('cluster-body');
+  b.innerHTML=d.nodes.map(n=>{
+    const r=n.last_report;const score=r?Math.max(0,100-((r.triggered_rules||[]).length)*10-r.error_log_count*.5):0;
+    const st=!n.online?'🔴 离线':score>80?'🟢':'🟡';
+    return`<div class="nd"><span class="dot ${n.online?'ok':'err'}"></span><span class="nd-n">${n.info.name}</span>
+    <span class="nd-v">CPU ${r?r.cpu_percent.toFixed(0):'?'}%</span><span class="nd-v">内存 ${r?r.memory_mb:'?'}MB</span>
+    <span class="nd-v">问题 ${r?(r.issues||[]).length:'?'}</span><span class="tag ${n.online?'ok':'fail'}">${st}</span></div>`
   }).join('');
 }
 
-// --- AI Terminal ---
-let terminalLoading = false;
+// === 问题 ===
+async function rIssues(){
+  const issues=await F('/api/issues');const b=document.getElementById('issues-body'),badge=document.getElementById('issue-count');
+  if(!issues||!Array.isArray(issues)||issues.length===0){b.innerHTML='<div class="emp">暂无问题 — 系统正常运行</div>';badge.textContent='0';return}
+  badge.textContent=issues.length;
+  // Fetch runbooks and changes for enrichment
+  const rbs=await F('/api/runbooks')||[];
+  b.innerHTML=issues.map(iss=>{
+    let h=`<div class="iss"><div class="iss-t">${H(iss.title)}</div>`;
+    h+=`<div class="iss-m"><span class="tag ${iss.status}">${iss.status}</span><span>${sevN(iss.severity)}</span><span>持续 ${T(iss.first_seen_at)}</span>`;
+    if(iss.confidence)h+=`<span>置信度 ${(iss.confidence*100).toFixed(0)}%</span>`;
+    if(iss.reopen_count>0)h+=`<span style="color:var(--orange)">重开×${iss.reopen_count}</span>`;
+    h+=`</div>`;
+    if(iss.root_cause)h+=`<div class="iss-rc">根因: ${H(iss.root_cause)}</div>`;
+    if(iss.code_refs&&iss.code_refs.length>0)h+=`<div class="iss-code">📍 ${iss.code_refs.join(', ')}</div>`;
+    if(iss.suggestions&&iss.suggestions.length>0)h+=`<div style="font-size:11px;color:var(--green);margin-top:2px">→ ${H(iss.suggestions[0])}</div>`;
+    // Runbook buttons
+    const matched=rbs.filter(rb=>rb.match_terms&&rb.match_terms.some(t=>iss.title.toLowerCase().includes(t.toLowerCase())));
+    if(matched.length>0){
+      h+=`<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">`;
+      matched.forEach(rb=>rb.actions.forEach(a=>{
+        h+=`<button class="btn sm" onclick="runAction('${rb.id}','${a.name}')">${a.icon||'▶'} ${a.name}</button>`;
+      }));
+      h+=`</div>`;
+    }
+    h+=`</div>`;return h;
+  }).join('');
+}
 
-async function sendTerminal() {
-  const input = document.getElementById('terminal-input');
-  const msg = input.value.trim();
-  if (!msg || terminalLoading) return;
-  input.value = '';
-  terminalLoading = true;
+// === 规则 ===
+async function rRules(){
+  const rules=await F('/api/rules');const b=document.getElementById('rules-body');
+  if(!rules||!Array.isArray(rules)||rules.length===0){b.innerHTML='<div class="emp">等待规则评估...</div>';return}
+  b.innerHTML=rules.map(r=>`<div class="row"><span class="dot ${r.triggered?'err':'ok'}" style="width:6px;height:6px"></span>
+  <span style="flex:1;margin-left:8px">${r.rule_name}</span>
+  <span class="nd-v">${r.metric_value.toFixed(1)} / ${r.threshold.toFixed(1)}</span></div>`).join('');
+}
 
-  const msgsDiv = document.getElementById('terminal-messages');
+// === AI 分析 ===
+async function rAI(){
+  const d=await F('/api/analysis');const b=document.getElementById('ai-body');
+  if(!d||d.status==='no_analysis'){b.innerHTML='<div class="emp">AI 分析将在检测到异常后启动</div>';return}
+  let h='';
+  if(d.health_summary)h+=`<div style="background:var(--glow);border:1px solid rgba(108,92,231,.2);border-radius:8px;padding:12px;margin-bottom:8px">
+    <div style="font-size:13px;line-height:1.6">${H(d.health_summary)}</div>
+    <div style="height:3px;border-radius:2px;background:var(--border);margin-top:6px"><div style="height:100%;border-radius:2px;background:linear-gradient(90deg,var(--red),var(--yellow),var(--green));width:${(d.confidence||0)*100}%"></div></div>
+    <div style="font-size:10px;color:var(--muted);margin-top:3px">置信度 ${((d.confidence||0)*100).toFixed(0)}% | 轮次 ${d.rounds||1}</div></div>`;
+  if(d.anomalies)d.anomalies.forEach(a=>{h+=`<div style="background:var(--bg);border-radius:6px;padding:10px;margin-top:6px">
+    <div style="font-size:12px;font-weight:600;color:${a.severity==='critical'?'var(--red)':'var(--yellow)'}">${a.title}</div>
+    <div style="font-size:11px;color:var(--text2);margin-top:2px">${a.root_cause}</div>
+    ${(a.suggestions||[]).map(s=>`<div style="font-size:11px;color:var(--green);margin-top:2px">→ ${s}</div>`).join('')}
+    ${(a.code_refs||[]).map(c=>`<div style="font-size:10px;color:var(--accent)">📍 ${c}</div>`).join('')}</div>`});
+  b.innerHTML=h||'<div class="emp">未发现异常</div>';
+}
 
-  // User message
-  msgsDiv.innerHTML += `<div style="margin:8px 0;"><span style="color:var(--green);">you$</span> <span style="color:var(--text-primary);">${escapeHtml(msg)}</span></div>`;
-  msgsDiv.innerHTML += `<div id="terminal-loading" style="color:var(--text-muted);">thinking...</div>`;
-  msgsDiv.scrollTop = msgsDiv.scrollHeight;
-
-  try {
-    const res = await fetch('/api/terminal/ask', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({session_id:'dashboard', message:msg})
+// === 自主调查 ===
+async function rInvestigations(){
+  const d=await F('/api/investigations');const b=document.getElementById('inv-body');
+  if(!d||!Array.isArray(d)||d.length===0){b.innerHTML='<div class="emp">检测到严重异常时自动调查</div>';return}
+  b.innerHTML=d.slice(0,5).map(inv=>{
+    let h=`<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:500">${H(inv.anomaly).substring(0,60)}</div>`;
+    h+=`<div style="font-size:10px;color:var(--muted)">${T(inv.start_time)} | 置信度 ${(inv.confidence*100).toFixed(0)}%</div>`;
+    if(inv.root_cause)h+=`<div style="font-size:11px;color:var(--accent);margin-top:2px">根因: ${H(inv.root_cause)}</div>`;
+    (inv.steps||[]).slice(0,3).forEach(s=>{
+      h+=`<div class="inv-s"><div class="cmd">${s.type}: ${H(s.command).substring(0,80)}</div>
+      <div class="out">${H(s.output).substring(0,120)}</div></div>`;
     });
-    const data = await res.json();
-    const el = document.getElementById('terminal-loading');
-    if (el) el.remove();
-
-    if (data.error) {
-      msgsDiv.innerHTML += `<div style="margin:8px 0;color:var(--red);">error: ${escapeHtml(data.error)}</div>`;
-    } else {
-      const content = (data.content || '').replace(/\n/g, '<br>');
-      msgsDiv.innerHTML += `<div style="margin:8px 0;"><span style="color:var(--accent);">ai$</span> <div style="color:var(--text-secondary);margin-top:4px;white-space:pre-wrap;line-height:1.5;">${content}</div></div>`;
-    }
-  } catch(e) {
-    const el = document.getElementById('terminal-loading');
-    if (el) el.remove();
-    msgsDiv.innerHTML += `<div style="color:var(--red);">network error</div>`;
-  }
-
-  terminalLoading = false;
-  msgsDiv.scrollTop = msgsDiv.scrollHeight;
+    h+=`</div>`;return h;
+  }).join('');
 }
 
-// --- Management Panel ---
-
-async function refreshManageStatus() {
-  const data = await fetchJSON('/api/manage/status');
-  const el = document.getElementById('manage-status');
-  if (!data || data.error) {
-    el.innerHTML = '<div style="color:var(--text-muted)">Management API not available</div>';
-    return;
-  }
-
-  el.innerHTML = `
-    <div class="mgmt-status-row">
-      <span class="mgmt-status-label">Status</span>
-      <span class="mgmt-status-val ok">${data.agent_running ? 'Running' : 'Stopped'} (PID ${data.agent_pid})</span>
-    </div>
-    <div class="mgmt-status-row">
-      <span class="mgmt-status-label">Uptime</span>
-      <span class="mgmt-status-val">${data.agent_uptime}</span>
-    </div>
-    <div class="mgmt-status-row">
-      <span class="mgmt-status-label">Platform</span>
-      <span class="mgmt-status-val">${data.platform}</span>
-    </div>
-    <div class="mgmt-status-row">
-      <span class="mgmt-status-label">SDK Probes</span>
-      <span class="mgmt-status-val ${data.probes_installed ? 'warn' : 'ok'}">
-        ${data.probes_installed ? data.probe_file_count + ' files instrumented' : 'Not installed'}
-      </span>
-    </div>
-    <div class="mgmt-status-row">
-      <span class="mgmt-status-label">Source Path</span>
-      <span class="mgmt-status-val">${data.source_configured ? data.source_path : 'Not configured'}</span>
-    </div>
-    <div class="mgmt-status-row">
-      <span class="mgmt-status-label">Data Size</span>
-      <span class="mgmt-status-val">${data.data_size_mb.toFixed(1)} MB</span>
-    </div>
-  `;
+// === 指标 ===
+async function rMetrics(){
+  const[metrics,anns]=await Promise.all([F('/api/metrics'),F('/api/metrics/annotations')]);
+  const b=document.getElementById('metrics-body');
+  if(!metrics||!Array.isArray(metrics)||metrics.length===0){b.innerHTML='<div class="emp">等待首次采集...</div>';return}
+  const am={};if(anns&&Array.isArray(anns))anns.forEach(a=>{am[a.metric_name]=a});
+  const groups={};metrics.forEach(m=>{const s=m.source||'other';if(!groups[s])groups[s]=[];groups[s].push(m)});
+  let h='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
+  for(const[src,mets]of Object.entries(groups)){
+    h+=`<div><div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:6px;text-transform:uppercase">${src}</div>`;
+    mets.forEach(m=>{const a=am[m.name];const an=a?`<span class="ann ${a.status}">${a.comment}</span>`:'';
+      h+=`<div class="row"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${m.name}">${m.name.replace(/^[^.]+\./,'')}</span>
+      <span style="font-weight:600;font-variant-numeric:tabular-nums">${fmtV(m.name,m.value)}</span>${an}</div>`});
+    h+=`</div>`}
+  h+=`</div>`;b.innerHTML=h;
 }
 
-async function manageAction(action) {
-  const btns = document.querySelectorAll('.mgmt-btn');
-  btns.forEach(b => b.disabled = true);
-  const output = document.getElementById('manage-output');
-  output.style.display = 'block';
-  output.textContent = 'Executing ' + action + '...\n';
-
-  try {
-    const res = await fetch('/api/manage/' + action, {method: 'POST'});
-    const data = await res.json();
-
-    if (data.error) {
-      output.textContent += 'ERROR: ' + data.error + '\n';
-      output.style.color = 'var(--red)';
-    } else if (data.output) {
-      output.textContent += data.output + '\n';
-      output.textContent += '\nStatus: ' + data.status;
-      output.style.color = data.status === 'success' ? 'var(--green)' : 'var(--red)';
-    } else {
-      output.textContent += 'Done.\n';
-      output.style.color = 'var(--green)';
-    }
-  } catch(e) {
-    output.textContent += 'Network error: ' + e.message;
-    output.style.color = 'var(--red)';
-  }
-
-  btns.forEach(b => b.disabled = false);
-  refreshManageStatus();
+// === 数据验证 ===
+async function rVerify(){
+  const[shadow,cp]=await Promise.all([F('/api/shadow/results'),F('/api/checkpoints/violations')]);
+  const b=document.getElementById('verify-body');let h='';
+  if(cp&&cp.stats){h+=`<div class="row"><span>检查站</span><span>${cp.stats.pass_count} 通过 / ${cp.stats.fail_count} 失败</span></div>`}
+  if(cp&&cp.violations&&cp.violations.length>0){cp.violations.slice(0,3).forEach(v=>{h+=`<div style="font-size:11px;color:var(--red);padding:3px 0">❌ ${H(v.func_name||'')}: ${H(v.rule||'')}</div>`})}
+  if(shadow&&shadow.results){shadow.results.slice(0,5).forEach(r=>{h+=`<div class="row"><span>${r.check_name}</span><span class="tag ${r.status}">${r.status==='pass'?'通过':'失败'}</span></div>`})}
+  b.innerHTML=h||'<div class="emp">验证窗口期间运行</div>';
 }
 
-async function triggerTrace() {
-  const btns = document.querySelectorAll('.mgmt-btn');
-  btns.forEach(b => b.disabled = true);
-  const output = document.getElementById('manage-output');
-  output.style.display = 'block';
-  output.textContent = 'Triggering trace window (10s)...\n';
-
-  try {
-    const res = await fetch('/api/manage/trace/trigger', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({duration_sec: 10})
-    });
-    const data = await res.json();
-    if (data.error) {
-      output.textContent += 'ERROR: ' + data.error;
-      output.style.color = 'var(--red)';
-    } else {
-      output.textContent += 'Trace window triggered. Data will appear in Trace panel in ~15s.';
-      output.style.color = 'var(--green)';
-    }
-  } catch(e) {
-    output.textContent += 'Network error: ' + e.message;
-    output.style.color = 'var(--red)';
-  }
-  btns.forEach(b => b.disabled = false);
+// === 健康探测 ===
+async function rProbes(){
+  const d=await F('/api/probes/summary');const b=document.getElementById('probes-body');
+  if(!d||!d.probes||d.probes.length===0){b.innerHTML='<div class="emp">未配置探测项目</div>';return}
+  b.innerHTML=d.probes.map(p=>`<div class="row"><span>${p.name}</span><span class="nd-v">${p.last_duration_ms||'?'}ms</span>
+  <span class="tag ${p.last_status||'ok'}">${p.last_status==='pass'?'通过':p.last_status==='fail'?'失败':'--'}</span></div>`).join('');
 }
 
-// --- Main refresh loop ---
-async function refreshAll() {
-  await Promise.all([
-    refreshOverview(),
-    refreshIssues(),
-    refreshRules(),
-    refreshCausalChains(),
-    refreshAnalysis(),
-    refreshTrace(),
-    refreshMetricsAnnotated(),
-    refreshLogs(),
-    refreshFeed(),
-    refreshManageStatus(),
-  ]);
+// === 动态 ===
+async function rFeed(){
+  const d=await F(`/api/events/poll?after=${lastEvtID}`);if(!d||!Array.isArray(d)||d.length===0)return;
+  const b=document.getElementById('feed-body');if(b.querySelector('.emp'))b.innerHTML='';
+  d.forEach(e=>{if(e.id>lastEvtID)lastEvtID=e.id;
+    const div=document.createElement('div');div.className='fe';
+    div.innerHTML=`<span class="fe-t">${T(e.timestamp)}</span><span class="fe-i">${e.icon||'•'}</span><span class="fe-m ${e.severity||'info'}">${H(e.message)}${e.cost?` <span style="color:var(--accent)">${e.cost}</span>`:''}</span>`;
+    b.insertBefore(div,b.firstChild)});
+  while(b.children.length>80)b.removeChild(b.lastChild);
 }
 
+// === 日志 ===
+async function rLogs(){
+  const d=await F('/api/logs');const b=document.getElementById('logs-body'),badge=document.getElementById('log-count');
+  if(!d||!Array.isArray(d)||d.length===0){b.innerHTML='<div class="emp">暂无错误日志</div>';badge.textContent='0';return}
+  badge.textContent=d.length;
+  b.innerHTML=d.slice(0,60).map(l=>`<div style="padding:2px 0;border-bottom:1px solid rgba(42,46,61,.3)">
+  <span style="font-weight:600;color:${l.level==='ERROR'?'var(--red)':'var(--yellow)'};width:50px;display:inline-block">${l.level}</span>
+  <span style="color:var(--text2)">${H(l.message).substring(0,150)}</span></div>`).join('');
+}
+
+// === AI 聊天 ===
+let chatBusy=false;
+async function sendChat(){
+  const inp=document.getElementById('chat-in');const msg=inp.value.trim();if(!msg||chatBusy)return;inp.value='';chatBusy=true;
+  const m=document.getElementById('chat-msgs');if(m.querySelector('.emp'))m.innerHTML='';
+  m.innerHTML+=`<div class="chat-u"><div class="chat-b">${H(msg)}</div></div>`;
+  m.innerHTML+=`<div class="chat-a" id="chat-loading"><div class="chat-b" style="color:var(--muted)">思考中...</div></div>`;
+  m.scrollTop=m.scrollHeight;
+  try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})});
+    const d=await r.json();const el=document.getElementById('chat-loading');
+    if(el){if(d.error)el.querySelector('.chat-b').innerHTML=`<span style="color:var(--red)">${H(d.error)}</span>`;
+    else{el.querySelector('.chat-b').textContent=d.response}}}
+  catch(e){const el=document.getElementById('chat-loading');if(el)el.querySelector('.chat-b').innerHTML='<span style="color:var(--red)">网络错误</span>'}
+  chatBusy=false;m.scrollTop=m.scrollHeight;
+}
+
+// === 管理 ===
+async function rMgmt(){
+  const d=await F('/api/manage/status');const el=document.getElementById('mgmt-status');
+  if(!d){el.innerHTML='<span style="color:var(--muted)">不可用</span>';return}
+  el.innerHTML=`<div class="mgmt-r"><span class="mgmt-l">状态</span><span class="mgmt-v" style="color:var(--green)">运行中 (PID ${d.agent_pid})</span></div>
+  <div class="mgmt-r"><span class="mgmt-l">运行时间</span><span class="mgmt-v">${d.agent_uptime}</span></div>
+  <div class="mgmt-r"><span class="mgmt-l">SDK 探针</span><span class="mgmt-v" style="color:${d.probes_installed?'var(--yellow)':'var(--green)'}">${d.probes_installed?d.probe_file_count+' 文件':'未安装'}</span></div>
+  <div class="mgmt-r"><span class="mgmt-l">数据</span><span class="mgmt-v">${d.data_size_mb.toFixed(1)} MB</span></div>`;
+}
+async function mgmtAction(a){
+  const out=document.getElementById('mgmt-out');out.style.display='block';out.textContent='执行 '+a+'...\n';
+  try{const r=await fetch('/api/manage/'+a,{method:'POST'});const d=await r.json();
+    out.textContent+=d.output||d.error||'完成';out.style.color=d.error?'var(--red)':'var(--green)'}
+  catch(e){out.textContent+='网络错误';out.style.color='var(--red)'}rMgmt();
+}
+async function triggerTrace(){
+  const out=document.getElementById('mgmt-out');out.style.display='block';out.textContent='触发追踪窗口...\n';
+  try{await fetch('/api/manage/trace/trigger',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"duration_sec":10}'});
+    out.textContent+='已触发 10 秒追踪窗口，数据将在约 15 秒后出现';out.style.color='var(--green)'}
+  catch(e){out.textContent+='失败';out.style.color='var(--red)'}
+}
+
+// === 维护静默 ===
+async function rSilence(){
+  const d=await F('/api/silence/list');const b=document.getElementById('silence-body');
+  if(!d||!d.active||d.active.length===0){b.innerHTML='<span style="color:var(--muted);font-size:11px">无活跃静默</span>';return}
+  b.innerHTML=d.active.map(s=>`<div class="row"><span style="font-size:11px">${s.reason} (至 ${T(s.end_time)})</span>
+  <button class="btn sm dn" onclick="delSilence('${s.id}')">结束</button></div>`).join('');
+}
+async function createSilence(){
+  await fetch('/api/silence/create',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({reason:'手动静默',created_by:'dashboard'})});rSilence();
+}
+async function delSilence(id){
+  await fetch('/api/silence/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});rSilence();
+}
+
+// === 基线 ===
+async function rBaseline(){
+  const d=await F('/api/baseline/status');const el=document.getElementById('baseline-status');
+  if(!d){el.textContent='未启用';return}
+  if(d.ready){el.innerHTML='<span style="color:var(--green)">✅ 就绪</span>';return}
+  const bl=d.baseline;const count=bl&&bl.metric_baselines?Object.keys(bl.metric_baselines).length:0;
+  el.innerHTML=`<span style="color:var(--yellow)">学习中... ${count} 个指标</span>`;
+}
+
+// === 体检 ===
+async function rPreflight(){
+  const d=await F('/api/preflight');const b=document.getElementById('preflight-body');
+  if(!d||d.status==='not_run'){b.innerHTML='<span style="color:var(--muted);font-size:11px">启动时自动检测</span>';return}
+  b.innerHTML=(d.checks||[]).map(c=>{const icon=c.status==='pass'?'✅':c.status==='fail'?'❌':'⚠️';
+    return`<span style="font-size:11px" title="${c.message}">${icon} ${c.name}</span>`}).join(' ');
+}
+
+// === Runbook 执行 ===
+async function runAction(rbID,actionName){
+  const out=document.getElementById('mgmt-out');out.style.display='block';out.textContent='执行: '+actionName+'...\n';
+  try{const r=await fetch('/api/runbooks/execute',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({runbook_id:rbID,action_name:actionName})});
+    const d=await r.json();out.textContent+=d.output||d.error||'完成';out.style.color=d.error?'var(--red)':'var(--green)'}
+  catch(e){out.textContent+='失败';out.style.color='var(--red)'}
+}
+
+// === 主循环 ===
+async function refreshAll(){await Promise.all([rOverview(),rCluster(),rIssues(),rRules(),rAI(),rInvestigations(),rMetrics(),rVerify(),rProbes(),rLogs(),rFeed(),rMgmt(),rSilence(),rBaseline(),rPreflight()])}
 refreshAll();
-setInterval(refreshAll, refreshInterval);
-
-// Feed polls faster than other data
-setInterval(refreshFeed, 3000);
+setInterval(refreshAll,RI);
+setInterval(rFeed,3000);
 </script>
-
 </body>
 </html>
