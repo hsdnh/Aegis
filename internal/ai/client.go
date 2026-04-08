@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -14,39 +15,70 @@ import (
 type Provider string
 
 const (
-	ProviderClaude Provider = "claude"
-	ProviderOpenAI Provider = "openai"
+	ProviderClaude         Provider = "claude"
+	ProviderOpenAI         Provider = "openai"
+	ProviderOpenAICompat   Provider = "openai_compatible" // DeepSeek, Ollama, 通义, Azure, OpenRouter, etc.
 )
 
-// Client talks to an LLM API. Supports Claude and OpenAI.
+// Client talks to an LLM API.
+// Supports: Claude, OpenAI, and any OpenAI-compatible API (DeepSeek, Ollama, 通义千问, etc.)
 type Client struct {
 	provider   Provider
 	apiKey     string
 	model      string
 	baseURL    string
 	httpClient *http.Client
-
+	name       string // human-readable name for logging, e.g. "analyst-claude" or "chat-deepseek"
 }
 
+// NewClient creates a client with auto-detected base URL.
 func NewClient(provider Provider, apiKey, model string) *Client {
+	return NewClientWithURL(provider, apiKey, model, "")
+}
+
+// NewClientWithURL creates a client with a custom base URL.
+// Use this for DeepSeek, Ollama, 通义千问, Azure OpenAI, OpenRouter, etc.
+func NewClientWithURL(provider Provider, apiKey, model, baseURL string) *Client {
 	c := &Client{
 		provider:   provider,
 		apiKey:     apiKey,
 		model:      model,
+		baseURL:    baseURL,
 		httpClient: &http.Client{Timeout: 120 * time.Second},
 	}
-	switch provider {
-	case ProviderClaude:
-		c.baseURL = "https://api.anthropic.com/v1/messages"
-		if model == "" {
-			c.model = "claude-sonnet-4-20250514"
-		}
-	case ProviderOpenAI:
-		c.baseURL = "https://api.openai.com/v1/chat/completions"
-		if model == "" {
-			c.model = "gpt-4o"
+
+	// Auto-detect base URL if not provided
+	if c.baseURL == "" {
+		switch provider {
+		case ProviderClaude:
+			c.baseURL = "https://api.anthropic.com/v1/messages"
+		case ProviderOpenAI:
+			c.baseURL = "https://api.openai.com/v1/chat/completions"
+		case ProviderOpenAICompat:
+			c.baseURL = "https://api.openai.com/v1/chat/completions" // fallback
 		}
 	}
+
+	// Auto-detect default model if not provided
+	if c.model == "" {
+		switch provider {
+		case ProviderClaude:
+			c.model = "claude-sonnet-4-20250514"
+		case ProviderOpenAI:
+			c.model = "gpt-4o"
+		case ProviderOpenAICompat:
+			c.model = "gpt-3.5-turbo"
+		}
+	}
+
+	// OpenAI-compatible uses OpenAI API format
+	if provider == ProviderOpenAICompat {
+		// Ensure URL ends with /chat/completions
+		if !strings.HasSuffix(c.baseURL, "/chat/completions") {
+			c.baseURL = strings.TrimSuffix(c.baseURL, "/") + "/chat/completions"
+		}
+	}
+
 	return c
 }
 
@@ -81,7 +113,7 @@ func (c *Client) ChatWithSystem(ctx context.Context, systemPrompt string, messag
 	switch c.provider {
 	case ProviderClaude:
 		return c.chatClaude(ctx, systemPrompt, messages)
-	case ProviderOpenAI:
+	case ProviderOpenAI, ProviderOpenAICompat:
 		return c.chatOpenAI(ctx, systemPrompt, messages)
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", c.provider)

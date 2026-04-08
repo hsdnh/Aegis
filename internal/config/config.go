@@ -108,11 +108,27 @@ type RuleConfig struct {
 }
 
 type AIConfig struct {
-	Provider     string `yaml:"provider"` // "claude", "openai"
+	Provider     string `yaml:"provider"`      // "claude", "openai", "openai_compatible"
 	APIKey       string `yaml:"api_key"`
 	Model        string `yaml:"model"`
+	BaseURL      string `yaml:"base_url"`      // custom API endpoint (for DeepSeek, Ollama, 通义, etc.)
 	SystemPrompt string `yaml:"system_prompt"`
 	Enabled      bool   `yaml:"enabled"`
+
+	// Multi-model routing: use different models for different tasks.
+	// If set, these override the main provider/model for specific tasks.
+	// If not set, all tasks use the main provider/model.
+	ChatModel    *AIModelConfig `yaml:"chat_model,omitempty"`     // for dashboard chat / AI terminal
+	AnalystModel *AIModelConfig `yaml:"analyst_model,omitempty"`  // for L2 anomaly analysis
+	InvestModel  *AIModelConfig `yaml:"invest_model,omitempty"`   // for autonomous investigation
+}
+
+// AIModelConfig configures a specific model for a specific task.
+type AIModelConfig struct {
+	Provider string `yaml:"provider"`
+	APIKey   string `yaml:"api_key"`
+	Model    string `yaml:"model"`
+	BaseURL  string `yaml:"base_url"`
 }
 
 type AlertsConfig struct {

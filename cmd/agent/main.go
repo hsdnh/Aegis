@@ -137,16 +137,37 @@ func main() {
 		}
 	}
 
-	// Setup L2 AI analysis
-	var aiClient *ai.Client
+	// Setup L2 AI analysis — supports multi-model routing
+	var aiClient *ai.Client      // default client (for analyst)
+	var chatClient *ai.Client    // for dashboard chat/terminal (may differ)
+	var investClient *ai.Client  // for autonomous investigation (may differ)
+
 	if cfg.AI.Enabled && cfg.AI.APIKey != "" {
-		aiClient = ai.NewClient(ai.Provider(cfg.AI.Provider), cfg.AI.APIKey, cfg.AI.Model)
+		// Main client
+		aiClient = ai.NewClientWithURL(ai.Provider(cfg.AI.Provider), cfg.AI.APIKey, cfg.AI.Model, cfg.AI.BaseURL)
+		chatClient = aiClient    // default: same client
+		investClient = aiClient  // default: same client
+
+		// Per-task model overrides
+		if m := cfg.AI.ChatModel; m != nil {
+			chatClient = ai.NewClientWithURL(ai.Provider(m.Provider), m.APIKey, m.Model, m.BaseURL)
+			log.Printf("Chat model: %s/%s", m.Provider, m.Model)
+		}
+		if m := cfg.AI.AnalystModel; m != nil {
+			aiClient = ai.NewClientWithURL(ai.Provider(m.Provider), m.APIKey, m.Model, m.BaseURL)
+			log.Printf("Analyst model: %s/%s", m.Provider, m.Model)
+		}
+		if m := cfg.AI.InvestModel; m != nil {
+			investClient = ai.NewClientWithURL(ai.Provider(m.Provider), m.APIKey, m.Model, m.BaseURL)
+			log.Printf("Investigation model: %s/%s", m.Provider, m.Model)
+		}
+
 		analyst := ai.NewAnalyst(aiClient, cfg.Project)
 		if cfg.AI.SystemPrompt != "" {
 			analyst.SetDomainKnowledge(cfg.AI.SystemPrompt)
 		}
 		a.SetAnalyst(analyst)
-		log.Printf("L2 AI analysis enabled (provider: %s, model: %s)", cfg.AI.Provider, cfg.AI.Model)
+		log.Printf("AI enabled: %s/%s (base: %s)", cfg.AI.Provider, cfg.AI.Model, cfg.AI.BaseURL)
 	}
 
 	// Setup causal graph (from L0 scan if source_path configured)
@@ -213,7 +234,7 @@ func main() {
 		if len(cfg.Collectors.Redis) > 0 {
 			creds.SetRedis(cfg.Collectors.Redis[0].Addr, cfg.Collectors.Redis[0].Password)
 		}
-		inv := investigator.New(aiClient, creds)
+		inv := investigator.New(investClient, creds)
 		a.SetInvestigator(inv)
 		log.Printf("Autonomous investigator enabled (auto-mode)")
 	}
@@ -227,7 +248,7 @@ func main() {
 
 		var chatSvc *dashboard.ChatService
 		if aiClient != nil {
-			chatSvc = dashboard.NewChatService(aiClient, store, eventLog)
+			chatSvc = dashboard.NewChatService(chatClient, store, eventLog)
 		}
 
 		mgr := dashboard.NewManageService(cfg.SourcePath, "./data", eventLog)
@@ -239,7 +260,7 @@ func main() {
 
 		// Register AI terminal if AI configured
 		if aiClient != nil {
-			terminal := dashboard.NewAITerminal(aiClient, store, eventLog)
+			terminal := dashboard.NewAITerminal(chatClient, store, eventLog)
 			srv.SetAITerminal(terminal)
 		}
 
@@ -266,7 +287,7 @@ func main() {
 			PreflightReport: report,
 		}
 		if aiClient != nil {
-			extras.Investigator = investigator.New(aiClient, func() *investigator.Credentials {
+			extras.Investigator = investigator.New(investClient, func() *investigator.Credentials {
 				c := investigator.NewCredentials()
 				if len(cfg.Collectors.MySQL) > 0 { c.SetMySQL(cfg.Collectors.MySQL[0].DSN) }
 				if len(cfg.Collectors.Redis) > 0 { c.SetRedis(cfg.Collectors.Redis[0].Addr, cfg.Collectors.Redis[0].Password) }
