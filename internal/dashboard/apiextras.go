@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/hsdnh/Aegis/internal/causal"
+	"github.com/hsdnh/Aegis/internal/changefeed"
 	"github.com/hsdnh/Aegis/internal/cluster"
+	"github.com/hsdnh/Aegis/internal/healthcheck"
 	"github.com/hsdnh/Aegis/internal/investigator"
 	"github.com/hsdnh/Aegis/internal/issue"
 	"github.com/hsdnh/Aegis/internal/runbook"
 	"github.com/hsdnh/Aegis/internal/storage"
-	"github.com/hsdnh/Aegis/internal/changefeed"
 	"github.com/hsdnh/Aegis/sdk/probe"
 )
 
@@ -203,5 +204,11 @@ func (s *Server) RegisterExtraRoutes(extras ExtraServices) {
 		} else {
 			s.writeJSON(rw, map[string]string{"status": "not_run"})
 		}
+	}))
+
+	// --- Auto-detect projects ---
+	s.mux.HandleFunc("/api/detect/projects", w(func(rw http.ResponseWriter, r *http.Request) {
+		projects := healthcheck.DetectProjects()
+		s.writeJSON(rw, projects)
 	}))
 }

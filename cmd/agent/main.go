@@ -188,6 +188,15 @@ func main() {
 	}
 
 	// Setup causal graph (from L0 scan if source_path configured)
+	// Auto-detect source_path if not configured
+	if cfg.SourcePath == "" {
+		detected := healthcheck.DetectProjects()
+		if len(detected) > 0 {
+			cfg.SourcePath = detected[0].Path
+			log.Printf("Auto-detected project: %s (%s) at %s", detected[0].Name, detected[0].Language, detected[0].Path)
+		}
+	}
+
 	if cfg.SourcePath != "" {
 		scanResult, err := scanner.ScanProject(cfg.SourcePath)
 		if err == nil {
