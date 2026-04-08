@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 // WorkerReporter sends monitoring results to the master node.

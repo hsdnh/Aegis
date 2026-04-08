@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/internal/ai"
+	"github.com/hsdnh/Aegis/internal/ai"
 	"github.com/redis/go-redis/v9"
 )
 

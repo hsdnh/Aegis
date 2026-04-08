@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/internal/ai"
-	"github.com/hsdnh/ai-ops-agent/internal/tracecollector"
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/internal/ai"
+	"github.com/hsdnh/Aegis/internal/tracecollector"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 // MetricKey generates a composite key from metric name + labels.

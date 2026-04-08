@@ -1,4 +1,4 @@
-module github.com/hsdnh/ai-ops-agent
+module github.com/hsdnh/Aegis
 
 go 1.25.0
 

@@ -25,7 +25,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/hsdnh/ai-ops-agent/cmd/instrument/rewriter"
+	"github.com/hsdnh/Aegis/cmd/instrument/rewriter"
 )
 
 func main() {
@@ -176,7 +176,7 @@ func removeAutotraceImport(sourcePath string, dryRun bool) {
 		}
 
 		content := string(data)
-		autotraceImport := `_ "github.com/hsdnh/ai-ops-agent/sdk/autotrace"`
+		autotraceImport := `_ "github.com/hsdnh/Aegis/sdk/autotrace"`
 
 		if !strings.Contains(content, autotraceImport) {
 			return nil

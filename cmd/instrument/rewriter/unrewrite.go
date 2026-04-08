@@ -71,7 +71,7 @@ func StripFile(path string, cfg Config) error {
 		}
 
 		// Skip the probe import line
-		if trimmed == `"github.com/hsdnh/ai-ops-agent/sdk/probe"` {
+		if trimmed == `"github.com/hsdnh/Aegis/sdk/probe"` {
 			removedCount++
 			continue
 		}

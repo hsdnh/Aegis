@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/internal/tracecollector"
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/internal/tracecollector"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 // Analyst performs AI-powered analysis on monitoring data.

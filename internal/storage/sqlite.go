@@ -10,7 +10,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 // DB wraps a SQLite connection with application-specific operations.

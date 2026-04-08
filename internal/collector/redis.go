@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/pkg/types"
 	"github.com/redis/go-redis/v9"
 )
 

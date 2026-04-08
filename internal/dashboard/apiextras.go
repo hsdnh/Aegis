@@ -8,14 +8,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/internal/causal"
-	"github.com/hsdnh/ai-ops-agent/internal/cluster"
-	"github.com/hsdnh/ai-ops-agent/internal/investigator"
-	"github.com/hsdnh/ai-ops-agent/internal/issue"
-	"github.com/hsdnh/ai-ops-agent/internal/runbook"
-	"github.com/hsdnh/ai-ops-agent/internal/storage"
-	"github.com/hsdnh/ai-ops-agent/internal/changefeed"
-	"github.com/hsdnh/ai-ops-agent/sdk/probe"
+	"github.com/hsdnh/Aegis/internal/causal"
+	"github.com/hsdnh/Aegis/internal/cluster"
+	"github.com/hsdnh/Aegis/internal/investigator"
+	"github.com/hsdnh/Aegis/internal/issue"
+	"github.com/hsdnh/Aegis/internal/runbook"
+	"github.com/hsdnh/Aegis/internal/storage"
+	"github.com/hsdnh/Aegis/internal/changefeed"
+	"github.com/hsdnh/Aegis/sdk/probe"
 )
 
 // ExtraServices holds references to all subsystems for API registration.

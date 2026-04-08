@@ -3,7 +3,7 @@ package issue
 import (
 	"testing"
 
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 func TestFingerprintDeterministic(t *testing.T) {

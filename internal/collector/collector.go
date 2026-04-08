@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 // Collector is the plugin interface for data collection.

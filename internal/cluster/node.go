@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 // Mode defines how this agent instance operates.

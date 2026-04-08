@@ -7,7 +7,7 @@ import (
 	"time"
 
 
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 var startedAt = time.Now()

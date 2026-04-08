@@ -1,7 +1,7 @@
 package analyzer
 
 import (
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 // ShouldInvokeAI decides if this cycle's snapshot warrants an AI analysis call.

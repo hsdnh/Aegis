@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 type TelegramConfig struct {

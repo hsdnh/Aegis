@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/sdk/probe"
+	"github.com/hsdnh/Aegis/sdk/probe"
 )
 
 // TraceReceiver listens for trace data from instrumented applications.

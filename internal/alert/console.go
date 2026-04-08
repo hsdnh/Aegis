@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 // ConsoleAlerter prints alerts to stdout. Useful for testing and debugging.

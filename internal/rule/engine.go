@@ -3,7 +3,7 @@ package rule
 import (
 	"fmt"
 
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 // Operator defines comparison operations for rules.

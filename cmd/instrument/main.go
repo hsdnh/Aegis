@@ -20,7 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/hsdnh/ai-ops-agent/cmd/instrument/rewriter"
+	"github.com/hsdnh/Aegis/cmd/instrument/rewriter"
 )
 
 func main() {

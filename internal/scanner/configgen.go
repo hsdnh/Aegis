@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hsdnh/ai-ops-agent/internal/ai"
+	"github.com/hsdnh/Aegis/internal/ai"
 )
 
 // GenerateConfig uses AI to analyze scan+probe results and produce a monitoring config.

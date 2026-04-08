@@ -17,9 +17,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/internal/scanner"
-	"github.com/hsdnh/ai-ops-agent/internal/tracecollector"
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/internal/scanner"
+	"github.com/hsdnh/Aegis/internal/tracecollector"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 // NodeType categorizes what a node in the causal graph represents.

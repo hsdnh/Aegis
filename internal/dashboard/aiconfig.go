@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/hsdnh/ai-ops-agent/internal/ai"
+	"github.com/hsdnh/Aegis/internal/ai"
 )
 
 // AIConfigManager allows hot-switching AI models from the dashboard.

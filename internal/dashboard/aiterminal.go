@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/internal/ai"
+	"github.com/hsdnh/Aegis/internal/ai"
 )
 
 // AITerminal is a server-side AI assistant that can execute investigation commands.

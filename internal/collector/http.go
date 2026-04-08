@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 type HTTPCheck struct {

@@ -24,8 +24,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/internal/ai"
-	"github.com/hsdnh/ai-ops-agent/internal/scanner"
+	"github.com/hsdnh/Aegis/internal/ai"
+	"github.com/hsdnh/Aegis/internal/scanner"
 )
 
 func main() {

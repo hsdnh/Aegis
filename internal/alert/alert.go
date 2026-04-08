@@ -3,7 +3,7 @@ package alert
 import (
 	"context"
 
-	"github.com/hsdnh/ai-ops-agent/pkg/types"
+	"github.com/hsdnh/Aegis/pkg/types"
 )
 
 // Alerter is the plugin interface for sending alerts.

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/sdk/probe"
+	"github.com/hsdnh/Aegis/sdk/probe"
 )
 
 // ExpectationModel learns normal request patterns and detects logic anomalies.

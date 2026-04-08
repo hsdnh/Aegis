@@ -2,7 +2,7 @@
 //
 // Usage in target project (ONE line):
 //
-//	import _ "github.com/hsdnh/ai-ops-agent/sdk/autotrace"
+//	import _ "github.com/hsdnh/Aegis/sdk/autotrace"
 //
 // This starts the probe with default settings:
 //   - Agent address: 127.0.0.1:19876 (env: AIOPS_AGENT_ADDR)
@@ -19,7 +19,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/hsdnh/ai-ops-agent/sdk/probe"
+	"github.com/hsdnh/Aegis/sdk/probe"
 )
 
 func init() {

@@ -13,7 +13,7 @@ import (
 )
 
 const sentinel = "// __aiops_instrumented"
-const probeImport = `"github.com/hsdnh/ai-ops-agent/sdk/probe"`
+const probeImport = `"github.com/hsdnh/Aegis/sdk/probe"`
 
 // Config controls the instrumentation behavior.
 type Config struct {

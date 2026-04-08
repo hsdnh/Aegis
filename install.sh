@@ -3,21 +3,21 @@
 # AI Ops Agent — One-Line Installer & Manager
 #
 # 一键安装（下载并进入交互式菜单）:
-#   bash <(curl -sS https://raw.githubusercontent.com/hsdnh/ai-ops-agent/main/install.sh)
+#   bash <(curl -sS https://raw.githubusercontent.com/hsdnh/Aegis/main/install.sh)
 #
 # 或两步安装:
-#   curl -sS -O https://raw.githubusercontent.com/hsdnh/ai-ops-agent/main/install.sh
+#   curl -sS -O https://raw.githubusercontent.com/hsdnh/Aegis/main/install.sh
 #   chmod +x install.sh && sudo ./install.sh
 #
 # 非交互式快速安装（默认配置）:
-#   curl -sS https://raw.githubusercontent.com/hsdnh/ai-ops-agent/main/install.sh | bash -s -- install
+#   curl -sS https://raw.githubusercontent.com/hsdnh/Aegis/main/install.sh | bash -s -- install
 
 set -e
 
 # ============================================================
 # Configuration
 # ============================================================
-REPO="hsdnh/ai-ops-agent"
+REPO="hsdnh/Aegis"
 INSTALL_DIR="/opt/ai-ops-agent"
 DATA_DIR="/opt/ai-ops-agent/data"
 CONFIG_FILE="/opt/ai-ops-agent/config.yaml"
