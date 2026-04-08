@@ -59,7 +59,7 @@ func NewClientWithURL(provider Provider, apiKey, model, baseURL string) *Client 
 		}
 	}
 
-	// Auto-detect default model if not provided
+	// Auto-detect default model — always default to the strongest available
 	if c.model == "" {
 		switch provider {
 		case ProviderClaude:
@@ -67,7 +67,7 @@ func NewClientWithURL(provider Provider, apiKey, model, baseURL string) *Client 
 		case ProviderOpenAI:
 			c.model = "gpt-4o"
 		case ProviderOpenAICompat:
-			c.model = "gpt-3.5-turbo"
+			c.model = "gpt-4o" // user should override via config
 		}
 	}
 
