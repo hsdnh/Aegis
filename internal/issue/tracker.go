@@ -84,7 +84,12 @@ func (t *Tracker) ProcessCycleResults(cycleID string, ruleResults []types.RuleRe
 
 			switch issue.Status {
 			case types.IssueDetecting:
-				if issue.ConsecutiveBad >= openThreshold {
+				// FATAL/CRITICAL bypass hysteresis — first detection is enough
+				threshold := openThreshold
+				if issue.Severity >= types.SeverityCritical {
+					threshold = 1
+				}
+				if issue.ConsecutiveBad >= threshold {
 					t.transition(issue, types.IssueOpen, "Confirmed after repeated detection", cycleID)
 					newIssues = append(newIssues, issue)
 				}
@@ -200,6 +205,15 @@ func (t *Tracker) ProcessCycleResults(cycleID string, ruleResults []types.RuleRe
 	}
 
 	return
+}
+
+// RestoreIssues loads persisted issues back into the tracker on startup.
+func (t *Tracker) RestoreIssues(issues []*types.Issue) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, iss := range issues {
+		t.issues[iss.Fingerprint] = iss
+	}
 }
 
 // Mute suppresses notifications for an issue until the given time.

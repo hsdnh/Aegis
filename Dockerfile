@@ -6,7 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=1 go build -ldflags "-s -w" -o /ai-ops-agent ./cmd/agent/
+RUN CGO_ENABLED=0 go build -ldflags "-s -w" -o /ai-ops-agent ./cmd/agent/
 RUN CGO_ENABLED=0 go build -ldflags "-s -w" -o /ai-ops-agent-instrument ./cmd/instrument/
 RUN CGO_ENABLED=0 go build -ldflags "-s -w" -o /ai-ops-agent-init ./cmd/init/
 

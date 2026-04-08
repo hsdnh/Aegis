@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 
 	"github.com/hsdnh/ai-ops-agent/pkg/types"
 )
@@ -20,7 +20,7 @@ type DB struct {
 
 // Open creates or opens a SQLite database at the given path.
 func Open(path string) (*DB, error) {
-	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_busy_timeout=5000")
+	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}

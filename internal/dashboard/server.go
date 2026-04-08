@@ -67,8 +67,8 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 // SetAITerminal enables the interactive AI terminal.
 func (s *Server) SetAITerminal(terminal *AITerminal) {
 	s.aiTerminal = terminal
-	s.mux.HandleFunc("/api/terminal/ask", s.corsMiddleware(s.handleTerminalAsk))
-	s.mux.HandleFunc("/api/terminal/session", s.corsMiddleware(s.handleTerminalSession))
+	s.mux.HandleFunc("/api/terminal/ask", s.apiWrap(s.handleTerminalAsk))
+	s.mux.HandleFunc("/api/terminal/session", s.apiWrap(s.handleTerminalSession))
 }
 
 func (s *Server) handleTerminalAsk(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +124,7 @@ func (s *Server) handleTerminalSession(w http.ResponseWriter, r *http.Request) {
 
 // RegisterCausalAPI adds causal chain endpoints. Called after server creation.
 func (s *Server) RegisterCausalAPI(registrar CausalGraphRegistrar) {
-	registrar.RegisterToMux(s.mux, s.corsMiddleware)
+	registrar.RegisterToMux(s.mux, s.apiWrap)
 }
 
 func (s *Server) Start() error {
@@ -132,28 +132,34 @@ func (s *Server) Start() error {
 	return http.ListenAndServe(s.addr, s.mux)
 }
 
-func (s *Server) registerRoutes() {
-	// Existing API endpoints (all wrapped with CORS)
-	s.mux.HandleFunc("/api/overview", s.corsMiddleware(s.handleOverview))
-	s.mux.HandleFunc("/api/metrics", s.corsMiddleware(s.handleMetrics))
-	s.mux.HandleFunc("/api/metrics/series", s.corsMiddleware(s.handleMetricSeries))
-	s.mux.HandleFunc("/api/metrics/names", s.corsMiddleware(s.handleMetricNames))
-	s.mux.HandleFunc("/api/metrics/annotations", s.corsMiddleware(s.handleMetricAnnotations))
-	s.mux.HandleFunc("/api/issues", s.corsMiddleware(s.handleIssues))
-	s.mux.HandleFunc("/api/issues/closed", s.corsMiddleware(s.handleClosedIssues))
-	s.mux.HandleFunc("/api/rules", s.corsMiddleware(s.handleRules))
-	s.mux.HandleFunc("/api/analysis", s.corsMiddleware(s.handleAnalysis))
-	s.mux.HandleFunc("/api/trace", s.corsMiddleware(s.handleTrace))
-	s.mux.HandleFunc("/api/logs", s.corsMiddleware(s.handleLogs))
+// apiWrap wraps ALL API handlers with CORS + auth. Single security boundary.
+func (s *Server) apiWrap(h http.HandlerFunc) http.HandlerFunc {
+	return s.corsMiddleware(s.authMiddleware(h))
+}
 
-	// Request traces (for waterfall view)
-	s.mux.HandleFunc("/api/traces/recent", s.corsMiddleware(s.handleRecentTraces))
+func (s *Server) registerRoutes() {
+	// ALL API endpoints go through CORS + auth
+	w := s.apiWrap
+	s.mux.HandleFunc("/api/overview", w(s.handleOverview))
+	s.mux.HandleFunc("/api/metrics", w(s.handleMetrics))
+	s.mux.HandleFunc("/api/metrics/series", w(s.handleMetricSeries))
+	s.mux.HandleFunc("/api/metrics/names", w(s.handleMetricNames))
+	s.mux.HandleFunc("/api/metrics/annotations", w(s.handleMetricAnnotations))
+	s.mux.HandleFunc("/api/issues", w(s.handleIssues))
+	s.mux.HandleFunc("/api/issues/closed", w(s.handleClosedIssues))
+	s.mux.HandleFunc("/api/rules", w(s.handleRules))
+	s.mux.HandleFunc("/api/analysis", w(s.handleAnalysis))
+	s.mux.HandleFunc("/api/trace", w(s.handleTrace))
+	s.mux.HandleFunc("/api/logs", w(s.handleLogs))
+
+	// Request traces
+	s.mux.HandleFunc("/api/traces/recent", w(s.handleRecentTraces))
 
 	// Activity feed + Chat
-	s.mux.HandleFunc("/api/events", s.corsMiddleware(s.handleEvents))
-	s.mux.HandleFunc("/api/events/poll", s.corsMiddleware(s.handleEventsPoll))
-	s.mux.HandleFunc("/api/chat", s.corsMiddleware(s.handleChat))
-	s.mux.HandleFunc("/api/chat/history", s.corsMiddleware(s.handleChatHistory))
+	s.mux.HandleFunc("/api/events", w(s.handleEvents))
+	s.mux.HandleFunc("/api/events/poll", w(s.handleEventsPoll))
+	s.mux.HandleFunc("/api/chat", w(s.handleChat))
+	s.mux.HandleFunc("/api/chat/history", w(s.handleChatHistory))
 
 	// Static files (embedded)
 	staticSub, err := fs.Sub(staticFiles, "static")

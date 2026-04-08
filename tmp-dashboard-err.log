@@ -1,0 +1,6 @@
+2026/04/08 08:45:43 AI Ops Agent starting for project: mercari-hunter
+2026/04/08 08:45:43 Registered 4 collectors
+2026/04/08 08:45:43 Dashboard auth enabled (token required)
+2026/04/08 08:45:43 Monitoring loop started with schedule: */30 * * * *
+2026/04/08 08:45:43 Dashboard available at http://localhost127.0.0.1:9091
+2026/04/08 08:45:43 [dashboard] Starting at http://localhost127.0.0.1:9091

@@ -43,9 +43,19 @@ collectors:
           threshold: 0
           alert: "无在线 Worker"
 
+  # Log monitoring — choose ONE source type per entry:
+  #   journalctl: for systemd services (Linux)
+  #   docker: for Docker containers
+  #   file: for log files (works on all platforms including Windows)
   log:
-    - source: journalctl
-      unit: mercari-worker-process
+    # Example for systemd (Linux):
+    # - source: journalctl
+    #   unit: mercari-worker-process
+    #   error_patterns: ["error", "panic", "fatal"]
+    #   minutes: 30
+    # Example for file-based (all platforms):
+    - source: file
+      file_path: "/var/log/mercari-worker.log"
       error_patterns: ["失败", "error", "panic", "timeout", "connection refused"]
       minutes: 30
 

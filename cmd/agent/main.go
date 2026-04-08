@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"log"
@@ -35,7 +36,7 @@ var (
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to config file")
 	once := flag.Bool("once", false, "Run one cycle and exit")
-	dashAddr := flag.String("dashboard", ":9090", "Dashboard listen address (empty to disable)")
+	dashAddr := flag.String("dashboard", "127.0.0.1:9090", "Dashboard listen address (empty to disable)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 
@@ -95,8 +96,9 @@ func main() {
 			log.Printf("WARNING: SQLite init failed: %v (running in memory-only mode)", err)
 		} else {
 			a.SetStorage(db)
-			// Load persisted issues on startup
+			// Load persisted issues on startup — restore into tracker so lifecycle continues
 			if savedIssues, err := db.LoadOpenIssues(); err == nil && len(savedIssues) > 0 {
+				issueTracker.RestoreIssues(savedIssues)
 				log.Printf("Restored %d issues from database", len(savedIssues))
 			}
 			log.Printf("SQLite persistence enabled: %s", dbPath)
@@ -130,9 +132,13 @@ func main() {
 		}
 	}
 
-	// Setup shadow verification
+	// Setup shadow verification — connect to first MySQL from collectors config
 	if len(cfg.Shadow) > 0 {
-		sv := causal.NewShadowVerifier(nil, nil, 200) // DB/Redis connected via collectors
+		var shadowDB *sql.DB
+		if len(cfg.Collectors.MySQL) > 0 && cfg.Collectors.MySQL[0].DSN != "" {
+			shadowDB, _ = sql.Open("mysql", cfg.Collectors.MySQL[0].DSN)
+		}
+		sv := causal.NewShadowVerifier(shadowDB, nil, 200)
 		for _, sc := range cfg.Shadow {
 			sv.AddCheck(causal.ShadowCheck{
 				Name: sc.Name, Type: sc.Type, Description: sc.Description,
