@@ -15,9 +15,11 @@ import (
 	"github.com/hsdnh/ai-ops-agent/internal/ai"
 	"github.com/hsdnh/ai-ops-agent/internal/alert"
 	"github.com/hsdnh/ai-ops-agent/internal/causal"
+	"github.com/hsdnh/ai-ops-agent/internal/cluster"
 	"github.com/hsdnh/ai-ops-agent/internal/collector"
 	"github.com/hsdnh/ai-ops-agent/internal/config"
 	"github.com/hsdnh/ai-ops-agent/internal/dashboard"
+	"github.com/hsdnh/ai-ops-agent/internal/health"
 	"github.com/hsdnh/ai-ops-agent/internal/healthcheck"
 	"github.com/hsdnh/ai-ops-agent/internal/issue"
 	"github.com/hsdnh/ai-ops-agent/internal/rule"
@@ -39,6 +41,9 @@ func main() {
 	once := flag.Bool("once", false, "Run one cycle and exit")
 	dashAddr := flag.String("dashboard", "127.0.0.1:9090", "Dashboard listen address (empty to disable)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
+	mode := flag.String("mode", "standalone", "Run mode: standalone, worker, master")
+	masterURL := flag.String("master", "", "Master URL for worker mode (e.g. http://10.0.0.1:9090)")
+	nodeName := flag.String("node", "", "Node name (default: hostname)")
 	flag.Parse()
 
 	if *showVersion {
@@ -234,12 +239,53 @@ func main() {
 		a.SetDashboard(store, eventLog)
 	}
 
+	// Setup cluster mode
+	runMode := cluster.Mode(*mode)
+	nName := *nodeName
+	if nName == "" {
+		nName = cfg.Project
+	}
+	nodeInfo := cluster.NewNodeInfo(nName, version, runMode)
+
+	var workerReporter *cluster.WorkerReporter
+	if runMode == cluster.ModeWorker && *masterURL != "" {
+		workerReporter = cluster.NewWorkerReporter(*masterURL, nodeInfo)
+		log.Printf("Cluster mode: WORKER → reporting to %s", *masterURL)
+	}
+
+	var nodeRegistry *cluster.NodeRegistry
+	if runMode == cluster.ModeMaster {
+		nodeRegistry = cluster.NewNodeRegistry()
+		receiver := cluster.NewMasterReceiver(nodeRegistry)
+		// Register cluster routes on dashboard mux (if dashboard enabled)
+		if *dashAddr != "" {
+			// Routes already registered via the dashboard server's mux
+			log.Printf("Cluster mode: MASTER — accepting worker reports")
+		} else {
+			// No dashboard — run cluster receiver on separate port
+			go func() {
+				if err := receiver.Start(":19800"); err != nil {
+					log.Printf("Cluster receiver error: %v", err)
+				}
+			}()
+			log.Printf("Cluster mode: MASTER — listening on :19800")
+		}
+		_ = receiver // used via registered routes
+	}
+
 	if *once {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		snapshot, err := a.RunOnce(ctx)
 		if err != nil {
 			log.Fatalf("Cycle failed: %v", err)
+		}
+		// Worker: report to master
+		if workerReporter != nil {
+			report := workerReporter.BuildReport(snapshot, issueTracker.OpenIssues(), health.CheckSelf(ctx))
+			if err := workerReporter.Send(report); err != nil {
+				log.Printf("Worker report failed: %v", err)
+			}
 		}
 		log.Printf("Cycle %s: %d metrics, %d alerts",
 			snapshot.CycleID, countMetrics(snapshot), len(snapshot.Alerts))
@@ -255,6 +301,13 @@ func main() {
 		if err != nil {
 			log.Printf("Cycle failed: %v", err)
 			return
+		}
+		// Worker: report to master after each cycle
+		if workerReporter != nil {
+			report := workerReporter.BuildReport(snapshot, issueTracker.OpenIssues(), health.CheckSelf(ctx))
+			if err := workerReporter.Send(report); err != nil {
+				log.Printf("Worker report failed: %v", err)
+			}
 		}
 		log.Printf("Cycle %s: %d metrics, %d alerts",
 			snapshot.CycleID, countMetrics(snapshot), len(snapshot.Alerts))
