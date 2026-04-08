@@ -32,3 +32,4 @@ coverage.out
 
 # Vendor (if using)
 # vendor/
+tmp-*.log
