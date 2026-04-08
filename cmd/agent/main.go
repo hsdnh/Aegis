@@ -18,6 +18,7 @@ import (
 	"github.com/hsdnh/ai-ops-agent/internal/collector"
 	"github.com/hsdnh/ai-ops-agent/internal/config"
 	"github.com/hsdnh/ai-ops-agent/internal/dashboard"
+	"github.com/hsdnh/ai-ops-agent/internal/healthcheck"
 	"github.com/hsdnh/ai-ops-agent/internal/issue"
 	"github.com/hsdnh/ai-ops-agent/internal/rule"
 	"github.com/hsdnh/ai-ops-agent/internal/scanner"
@@ -51,6 +52,29 @@ func main() {
 	}
 
 	log.Printf("AI Ops Agent starting for project: %s", cfg.Project)
+
+	// Preflight health check — validate config before starting
+	preflightCfg := healthcheck.PreflightConfig{
+		SQLitePath: cfg.Storage.Path,
+	}
+	for _, rc := range cfg.Collectors.Redis {
+		preflightCfg.RedisAddrs = append(preflightCfg.RedisAddrs, rc.Addr)
+		preflightCfg.RedisPassword = rc.Password
+	}
+	for _, mc := range cfg.Collectors.MySQL {
+		preflightCfg.MySQLDSNs = append(preflightCfg.MySQLDSNs, mc.DSN)
+	}
+	for _, hc := range cfg.Collectors.HTTP {
+		preflightCfg.HTTPURLs = append(preflightCfg.HTTPURLs, hc.URL)
+	}
+	for _, lc := range cfg.Collectors.Log {
+		preflightCfg.LogSources = append(preflightCfg.LogSources, healthcheck.LogSourceCheck{
+			Source: lc.Source, Unit: lc.Unit, Path: lc.FilePath, Container: lc.Container,
+		})
+	}
+
+	report := healthcheck.RunPreflight(context.Background(), preflightCfg)
+	fmt.Print(report.FormatReport())
 
 	// Build collectors
 	collectorRegistry := collector.NewRegistry()
