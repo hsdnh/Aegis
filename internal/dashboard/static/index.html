@@ -188,19 +188,32 @@ input:focus{border-color:var(--accent)}
 <div class="p g4">
   <div class="ph"><span class="pt">⚙️ 系统管理</span></div>
   <div class="pc">
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">
       <!-- 状态 -->
       <div>
         <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px">运行状态</div>
         <div id="mgmt-status">加载中...</div>
       </div>
-      <!-- 操作 -->
+      <!-- AI 模型 -->
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px">AI 模型</div>
+        <div id="ai-model-info" style="font-size:11px;color:var(--text2);margin-bottom:6px">加载中...</div>
+        <select id="ai-preset" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-size:11px;margin-bottom:4px" onchange="onPresetSelect()">
+          <option value="">选择模型...</option>
+        </select>
+        <div id="ai-custom" style="display:none">
+          <input type="text" id="ai-custom-key" placeholder="API Key" style="margin-bottom:3px;font-size:10px;padding:4px 6px">
+          <input type="text" id="ai-custom-url" placeholder="Base URL (可选)" style="margin-bottom:3px;font-size:10px;padding:4px 6px">
+        </div>
+        <button class="btn" onclick="switchModel()" style="width:100%">切换模型</button>
+      </div>
+      <!-- 探针 -->
       <div>
         <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px">探针管理</div>
         <div style="display:flex;flex-direction:column;gap:4px">
-          <button class="btn" onclick="mgmtAction('probes/install')">🔧 安装 SDK 探针</button>
-          <button class="btn dn" onclick="mgmtAction('probes/strip')">🧹 卸载探针(还原代码)</button>
-          <button class="btn" onclick="triggerTrace()">🔬 触发追踪窗口(10秒)</button>
+          <button class="btn" onclick="mgmtAction('probes/install')">🔧 安装探针</button>
+          <button class="btn dn" onclick="mgmtAction('probes/strip')">🧹 卸载探针</button>
+          <button class="btn" onclick="triggerTrace()">🔬 追踪(10秒)</button>
         </div>
       </div>
       <!-- 维护窗口 -->
@@ -411,6 +424,50 @@ async function sendChat(){
   chatBusy=false;m.scrollTop=m.scrollHeight;
 }
 
+// === AI 模型切换 ===
+let aiPresets=[];
+async function rAIConfig(){
+  const d=await F('/api/ai/config');if(!d)return;
+  const info=document.getElementById('ai-model-info');
+  if(d.current){
+    const c=d.current;
+    info.innerHTML=`<div>${c.enabled?'🟢':'🔴'} ${c.provider}/${c.model}</div>${c.base_url?`<div style="font-size:9px;color:var(--muted)">${c.base_url}</div>`:''}`;
+  }
+  if(d.presets){
+    aiPresets=d.presets;
+    const sel=document.getElementById('ai-preset');
+    sel.innerHTML='<option value="">选择模型...</option>'+d.presets.map((p,i)=>
+      `<option value="${i}">${p.name}</option>`).join('');
+  }
+}
+function onPresetSelect(){
+  const sel=document.getElementById('ai-preset');
+  const idx=parseInt(sel.value);
+  const custom=document.getElementById('ai-custom');
+  if(isNaN(idx)){custom.style.display='none';return}
+  const p=aiPresets[idx];
+  custom.style.display=(p.model==='')?'block':'none';
+}
+async function switchModel(){
+  const sel=document.getElementById('ai-preset');
+  const idx=parseInt(sel.value);
+  if(isNaN(idx)){alert('请先选择模型');return}
+  const p=aiPresets[idx];
+  const provider=p.provider;
+  let model=p.model,baseURL=p.base_url,apiKey='';
+  if(!model){
+    model=prompt('输入模型名称:');if(!model)return;
+    baseURL=document.getElementById('ai-custom-url').value;
+  }
+  apiKey=document.getElementById('ai-custom-key').value||prompt('输入 API Key:');
+  if(!apiKey){alert('需要 API Key');return}
+  const out=document.getElementById('mgmt-out');out.style.display='block';out.textContent='切换模型中...\n';
+  const d=await P('/api/ai/switch',{provider,model,base_url:baseURL,api_key:apiKey});
+  out.textContent+=d.error?'失败: '+d.error:'已切换到 '+model;
+  out.style.color=d.error?'var(--red)':'var(--green)';
+  rAIConfig();
+}
+
 // === 管理 ===
 async function rMgmt(){
   const d=await F('/api/manage/status');const el=document.getElementById('mgmt-status');
@@ -473,7 +530,7 @@ async function runAction(rbID,actionName){
 }
 
 // === 主循环 ===
-async function refreshAll(){await Promise.all([rOverview(),rCluster(),rIssues(),rRules(),rAI(),rInvestigations(),rMetrics(),rVerify(),rProbes(),rLogs(),rFeed(),rMgmt(),rSilence(),rBaseline(),rPreflight()])}
+async function refreshAll(){await Promise.all([rOverview(),rCluster(),rIssues(),rRules(),rAI(),rInvestigations(),rMetrics(),rVerify(),rProbes(),rLogs(),rFeed(),rMgmt(),rSilence(),rBaseline(),rPreflight(),rAIConfig()])}
 refreshAll();
 setInterval(refreshAll,RI);
 setInterval(rFeed,3000);

@@ -37,6 +37,10 @@ type ManageStatus struct {
 	DataDir          string `json:"data_dir"`
 	DataSizeMB       float64 `json:"data_size_mb"`
 	Platform         string `json:"platform"`
+	AIProvider       string `json:"ai_provider"`
+	AIModel          string `json:"ai_model"`
+	AIBaseURL        string `json:"ai_base_url"`
+	AIEnabled        bool   `json:"ai_enabled"`
 }
 
 // TaskResult is returned by async operations.
