@@ -228,7 +228,12 @@ input:focus{border-color:var(--accent)}
 
 <script>
 const A='';let RI=10000,lastEvtID=0;
-async function F(u){try{const r=await fetch(A+u);return await r.json()}catch(e){return null}}
+// Token: read from URL ?token=xxx or localStorage
+const _tk=(new URLSearchParams(location.search)).get('token')||localStorage.getItem('aiops_token')||'';
+if(_tk)localStorage.setItem('aiops_token',_tk);
+const _hdr=_tk?{'Authorization':'Bearer '+_tk}:{};
+async function F(u){try{const r=await fetch(A+u,{headers:_hdr});if(r.status===401){document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#ff3d71;font-size:18px">需要认证令牌 — 请在 URL 添加 ?token=xxx</div>';return null}return await r.json()}catch(e){return null}}
+async function P(u,body){try{const r=await fetch(A+u,{method:'POST',headers:{'Content-Type':'application/json',..._hdr},body:JSON.stringify(body)});if(r.status===401)return{error:'未授权'};return await r.json()}catch(e){return{error:'网络错误'}}}
 function T(ts){if(!ts)return'--';return new Date(ts).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}
 function H(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 function fmtV(n,v){if(n.includes('bytes')||n.includes('memory'))return(v/1048576).toFixed(1)+'MB';if(n.includes('latency')||n.includes('_ms'))return v.toFixed(0)+'ms';if(n.includes('alive'))return v===1?'正常':'断开';if(v>=1e6)return(v/1e6).toFixed(1)+'M';if(v>=1e3)return(v/1e3).toFixed(1)+'K';return v.toFixed(v%1===0?0:2)}
@@ -269,9 +274,8 @@ async function rIssues(){
   const issues=await F('/api/issues');const b=document.getElementById('issues-body'),badge=document.getElementById('issue-count');
   if(!issues||!Array.isArray(issues)||issues.length===0){b.innerHTML='<div class="emp">暂无问题 — 系统正常运行</div>';badge.textContent='0';return}
   badge.textContent=issues.length;
-  // Fetch runbooks and changes for enrichment
-  const rbs=await F('/api/runbooks')||[];
-  b.innerHTML=issues.map(iss=>{
+  // Build HTML for each issue, with server-side runbook matching
+  const htmlParts=await Promise.all(issues.map(async iss=>{
     let h=`<div class="iss"><div class="iss-t">${H(iss.title)}</div>`;
     h+=`<div class="iss-m"><span class="tag ${iss.status}">${iss.status}</span><span>${sevN(iss.severity)}</span><span>持续 ${T(iss.first_seen_at)}</span>`;
     if(iss.confidence)h+=`<span>置信度 ${(iss.confidence*100).toFixed(0)}%</span>`;
@@ -280,17 +284,18 @@ async function rIssues(){
     if(iss.root_cause)h+=`<div class="iss-rc">根因: ${H(iss.root_cause)}</div>`;
     if(iss.code_refs&&iss.code_refs.length>0)h+=`<div class="iss-code">📍 ${iss.code_refs.join(', ')}</div>`;
     if(iss.suggestions&&iss.suggestions.length>0)h+=`<div style="font-size:11px;color:var(--green);margin-top:2px">→ ${H(iss.suggestions[0])}</div>`;
-    // Runbook buttons
-    const matched=rbs.filter(rb=>rb.match_terms&&rb.match_terms.some(t=>iss.title.toLowerCase().includes(t.toLowerCase())));
-    if(matched.length>0){
+    // Runbook buttons — server-side matching (supports both match_rules and match_terms)
+    const matched=await F(`/api/runbooks/match?rule=${encodeURIComponent(iss.title)}&title=${encodeURIComponent(iss.title)}&summary=${encodeURIComponent(iss.summary||'')}`);
+    if(matched&&Array.isArray(matched)&&matched.length>0){
       h+=`<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">`;
-      matched.forEach(rb=>rb.actions.forEach(a=>{
+      matched.forEach(rb=>(rb.actions||[]).forEach(a=>{
         h+=`<button class="btn sm" onclick="runAction('${rb.id}','${a.name}')">${a.icon||'▶'} ${a.name}</button>`;
       }));
       h+=`</div>`;
     }
     h+=`</div>`;return h;
-  }).join('');
+  }));
+  b.innerHTML=htmlParts.join('');
 }
 
 // === 规则 ===
@@ -399,8 +404,7 @@ async function sendChat(){
   m.innerHTML+=`<div class="chat-u"><div class="chat-b">${H(msg)}</div></div>`;
   m.innerHTML+=`<div class="chat-a" id="chat-loading"><div class="chat-b" style="color:var(--muted)">思考中...</div></div>`;
   m.scrollTop=m.scrollHeight;
-  try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})});
-    const d=await r.json();const el=document.getElementById('chat-loading');
+  try{const d=await P('/api/chat',{message:msg});const el=document.getElementById('chat-loading');
     if(el){if(d.error)el.querySelector('.chat-b').innerHTML=`<span style="color:var(--red)">${H(d.error)}</span>`;
     else{el.querySelector('.chat-b').textContent=d.response}}}
   catch(e){const el=document.getElementById('chat-loading');if(el)el.querySelector('.chat-b').innerHTML='<span style="color:var(--red)">网络错误</span>'}
@@ -418,13 +422,13 @@ async function rMgmt(){
 }
 async function mgmtAction(a){
   const out=document.getElementById('mgmt-out');out.style.display='block';out.textContent='执行 '+a+'...\n';
-  try{const r=await fetch('/api/manage/'+a,{method:'POST'});const d=await r.json();
+  try{const d=await P('/api/manage/'+a,{});
     out.textContent+=d.output||d.error||'完成';out.style.color=d.error?'var(--red)':'var(--green)'}
   catch(e){out.textContent+='网络错误';out.style.color='var(--red)'}rMgmt();
 }
 async function triggerTrace(){
   const out=document.getElementById('mgmt-out');out.style.display='block';out.textContent='触发追踪窗口...\n';
-  try{await fetch('/api/manage/trace/trigger',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"duration_sec":10}'});
+  try{await P('/api/manage/trace/trigger',{duration_sec:10});
     out.textContent+='已触发 10 秒追踪窗口，数据将在约 15 秒后出现';out.style.color='var(--green)'}
   catch(e){out.textContent+='失败';out.style.color='var(--red)'}
 }
@@ -437,11 +441,10 @@ async function rSilence(){
   <button class="btn sm dn" onclick="delSilence('${s.id}')">结束</button></div>`).join('');
 }
 async function createSilence(){
-  await fetch('/api/silence/create',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({reason:'手动静默',created_by:'dashboard'})});rSilence();
+  await P('/api/silence/create',{reason:'手动静默',created_by:'dashboard'});rSilence();
 }
 async function delSilence(id){
-  await fetch('/api/silence/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});rSilence();
+  await P('/api/silence/delete',{id});rSilence();
 }
 
 // === 基线 ===
@@ -464,9 +467,8 @@ async function rPreflight(){
 // === Runbook 执行 ===
 async function runAction(rbID,actionName){
   const out=document.getElementById('mgmt-out');out.style.display='block';out.textContent='执行: '+actionName+'...\n';
-  try{const r=await fetch('/api/runbooks/execute',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({runbook_id:rbID,action_name:actionName})});
-    const d=await r.json();out.textContent+=d.output||d.error||'完成';out.style.color=d.error?'var(--red)':'var(--green)'}
+  try{const d=await P('/api/runbooks/execute',{runbook_id:rbID,action_name:actionName});
+    out.textContent+=d.output||d.error||'完成';out.style.color=d.error?'var(--red)':'var(--green)'}
   catch(e){out.textContent+='失败';out.style.color='var(--red)'}
 }
 

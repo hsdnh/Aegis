@@ -159,10 +159,16 @@ func (t *Tracker) ProcessCycleResults(cycleID string, ruleResults []types.RuleRe
 
 	// Create new issues for fingerprints not yet tracked
 	for fp, rr := range activeFingerprints {
+		// CRITICAL/FATAL: skip DETECTING, create directly as OPEN for immediate notification
+		initialStatus := types.IssueDetecting
+		if rr.Severity >= types.SeverityCritical {
+			initialStatus = types.IssueOpen
+		}
+
 		issue := &types.Issue{
 			ID:              fmt.Sprintf("ISS-%s-%s", time.Now().Format("0102"), fp[:6]),
 			Fingerprint:     fp,
-			Status:          types.IssueDetecting,
+			Status:          initialStatus,
 			Severity:        rr.Severity,
 			Title:           rr.RuleName,
 			Summary:         rr.Message,
@@ -180,7 +186,7 @@ func (t *Tracker) ProcessCycleResults(cycleID string, ruleResults []types.RuleRe
 			History: []types.IssueEvent{{
 				Timestamp:  now,
 				FromStatus: "",
-				ToStatus:   types.IssueDetecting,
+				ToStatus:   initialStatus,
 				Reason:     "First detection",
 				CycleID:    cycleID,
 			}},
@@ -202,9 +208,27 @@ func (t *Tracker) ProcessCycleResults(cycleID string, ruleResults []types.RuleRe
 		}
 
 		t.issues[fp] = issue
+
+		// CRITICAL/FATAL created as OPEN → immediately notify
+		if initialStatus == types.IssueOpen {
+			newIssues = append(newIssues, issue)
+		}
 	}
 
 	return
+}
+
+// ClosedIssues returns recently closed issues.
+func (t *Tracker) ClosedIssues() []*types.Issue {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	var result []*types.Issue
+	for _, issue := range t.issues {
+		if issue.Status == types.IssueClosed {
+			result = append(result, issue)
+		}
+	}
+	return result
 }
 
 // RestoreIssues loads persisted issues back into the tracker on startup.

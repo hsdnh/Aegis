@@ -421,7 +421,7 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 	if a.store != nil {
 		a.store.PushAgentHealth(&agentHealth)
 		a.store.PushSnapshot(snapshot)
-		a.store.PushIssues(a.issueTracker.OpenIssues(), nil)
+		a.store.PushIssues(a.issueTracker.OpenIssues(), a.issueTracker.ClosedIssues())
 		if a.traceReceiver != nil {
 			if tw := a.traceReceiver.LatestWindow(); tw != nil {
 				a.store.PushTrace(tw)

@@ -15,6 +15,7 @@ import (
 	"github.com/hsdnh/ai-ops-agent/internal/ai"
 	"github.com/hsdnh/ai-ops-agent/internal/alert"
 	"github.com/hsdnh/ai-ops-agent/internal/causal"
+	"github.com/hsdnh/ai-ops-agent/internal/changefeed"
 	"github.com/hsdnh/ai-ops-agent/internal/cluster"
 	"github.com/hsdnh/ai-ops-agent/internal/collector"
 	"github.com/hsdnh/ai-ops-agent/internal/config"
@@ -24,6 +25,7 @@ import (
 	"github.com/hsdnh/ai-ops-agent/internal/investigator"
 	"github.com/hsdnh/ai-ops-agent/internal/issue"
 	"github.com/hsdnh/ai-ops-agent/internal/rule"
+	"github.com/hsdnh/ai-ops-agent/internal/runbook"
 	"github.com/hsdnh/ai-ops-agent/internal/scanner"
 	"github.com/hsdnh/ai-ops-agent/internal/storage"
 	"github.com/hsdnh/ai-ops-agent/pkg/types"
@@ -245,6 +247,33 @@ func main() {
 		if a.CausalGraph() != nil {
 			srv.RegisterCausalAPI(causal.NewGraphAPI(a.CausalGraph()))
 		}
+
+		// Register ALL extra API routes (silence, runbook, investigate, probes, etc.)
+		silenceMgr := issue.NewSilenceManager()
+		rbRegistry := runbook.NewRegistry()
+		for _, rb := range runbook.DefaultRunbooks() {
+			rbRegistry.Add(rb)
+		}
+		changeFeed := changefeed.NewFeed(200)
+		if cfg.SourcePath != "" {
+			changeFeed.AddWatcher(changefeed.WatchConfig{Type: changefeed.ChangeDeploy, GitRepo: cfg.SourcePath})
+		}
+
+		extras := dashboard.ExtraServices{
+			SilenceManager:  silenceMgr,
+			RunbookRegistry: rbRegistry,
+			ChangeFeed:      changeFeed,
+			PreflightReport: report,
+		}
+		if aiClient != nil {
+			extras.Investigator = investigator.New(aiClient, func() *investigator.Credentials {
+				c := investigator.NewCredentials()
+				if len(cfg.Collectors.MySQL) > 0 { c.SetMySQL(cfg.Collectors.MySQL[0].DSN) }
+				if len(cfg.Collectors.Redis) > 0 { c.SetRedis(cfg.Collectors.Redis[0].Addr, cfg.Collectors.Redis[0].Password) }
+				return c
+			}())
+		}
+		srv.RegisterExtraRoutes(extras)
 
 		go func() {
 			if err := srv.Start(); err != nil {

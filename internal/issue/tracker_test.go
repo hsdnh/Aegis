@@ -31,7 +31,7 @@ func TestFingerprintNilLabels(t *testing.T) {
 	}
 }
 
-func TestIssueLifecycle_DetectingToOpen(t *testing.T) {
+func TestIssueLifecycle_CriticalImmediateOpen(t *testing.T) {
 	tracker := NewTracker()
 	health := types.SnapshotHealth{TotalCollectors: 1, SuccessCollectors: 1, Completeness: 1.0, Trustworthy: true}
 
@@ -40,17 +40,36 @@ func TestIssueLifecycle_DetectingToOpen(t *testing.T) {
 		MetricName: "redis.queue", MetricValue: 5000, Threshold: 1000,
 	}}
 
-	// Cycle 1: should be DETECTING (not yet OPEN)
+	// CRITICAL: should be OPEN immediately on first detection (no DETECTING phase)
+	newIss, _, _ := tracker.ProcessCycleResults("c1", rr, health)
+	if len(newIss) != 1 {
+		t.Fatalf("CRITICAL should create OPEN issue on first detection, got %d", len(newIss))
+	}
+	if newIss[0].Status != types.IssueOpen {
+		t.Errorf("expected OPEN, got %s", newIss[0].Status)
+	}
+}
+
+func TestIssueLifecycle_WarningDetectingToOpen(t *testing.T) {
+	tracker := NewTracker()
+	health := types.SnapshotHealth{TotalCollectors: 1, SuccessCollectors: 1, Completeness: 1.0, Trustworthy: true}
+
+	rr := []types.RuleResult{{
+		RuleName: "test_warn", Triggered: true, Severity: types.SeverityWarning,
+		MetricName: "log.errors", MetricValue: 100, Threshold: 50,
+	}}
+
+	// WARNING: Cycle 1 should be DETECTING (not yet OPEN)
 	newIss, _, _ := tracker.ProcessCycleResults("c1", rr, health)
 	if len(newIss) != 0 {
-		t.Error("should not create OPEN issue on first detection")
+		t.Error("WARNING should not create OPEN issue on first detection")
 	}
 	issues := tracker.OpenIssues()
 	if len(issues) != 1 || issues[0].Status != types.IssueDetecting {
 		t.Errorf("expected 1 DETECTING issue, got %d", len(issues))
 	}
 
-	// Cycle 2: should transition to OPEN (consecutive_bad >= 2)
+	// Cycle 2: should transition to OPEN
 	newIss, _, _ = tracker.ProcessCycleResults("c2", rr, health)
 	if len(newIss) != 1 {
 		t.Error("should create OPEN issue after 2 consecutive detections")

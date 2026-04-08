@@ -1,0 +1,15 @@
+﻿project: storage-test
+schedule: "*/30 * * * *"
+collectors:
+  redis: []
+  mysql: []
+  http: []
+  log: []
+rules: []
+ai:
+  enabled: false
+alerts:
+  console: {}
+storage:
+  enabled: true
+  path: "C:/Users/10031/Desktop/ai创业/ai-ops-agent/data/tmp-storage-test.db"
