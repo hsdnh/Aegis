@@ -132,6 +132,46 @@ ai:
     - 推送异常（可能是去重失效、共享 runtime 竞态、评级不一致）
     - 安全问题（Redis 被入侵、SSH 异常登录）
 
+# 数据持久化 (SQLite)
+storage:
+  enabled: true
+  path: "./data/aiops.db"
+
+# 代码扫描源路径 (L0 + 因果链 + 变更时间线)
+# source_path: "/opt/mercari-hunter"
+
+# 依赖关系 (根组件故障时自动抑制下游告警)
+# dependencies:
+#   - root: "mysql.connection.alive"
+#     dependents: ["mysql.check.pending_orders", "mysql.check.failed_orders"]
+#   - root: "redis.connection.alive"
+#     dependents: ["redis.keys.mh_queue_all_pending.total_length"]
+
+# 影子验证 (独立查询验证数据正确性)
+# shadow:
+#   - name: "搜索结果应为新品"
+#     type: sql_compare
+#     query: "SELECT COUNT(*) FROM search_results WHERE created_at < NOW()-INTERVAL 30 MINUTE AND found_at > NOW()-INTERVAL 30 MINUTE"
+#     expect: "== 0"
+#     severity: critical
+#     description: "搜索到了上架超过30分钟的旧商品"
+#   - name: "推送评级一致性"
+#     type: sql_compare
+#     query: "SELECT COUNT(*) FROM push_log p JOIN items i ON p.item_id=i.id WHERE p.grade!=i.grade AND p.created_at > NOW()-INTERVAL 1 HOUR"
+#     expect: "== 0"
+#     severity: critical
+#     description: "推送评级与数据库不一致"
+
+# 健康探测 (主动发测试请求验证功能)
+# probes:
+#   - name: "API 健康"
+#     type: http
+#     url: "http://localhost:8080/v1/overview"
+#     expect_status: 200
+#   - name: "Redis 读写"
+#     type: redis_roundtrip
+#     redis_addr: "127.0.0.1:6379"
+
 # 告警通道
 alerts:
   console: {}

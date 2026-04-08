@@ -17,6 +17,7 @@ type Config struct {
 	Storage    StorageConfig     `yaml:"storage"`
 	Shadow     []ShadowCheckConfig `yaml:"shadow,omitempty"`
 	Probes     []SyntheticProbeConfig `yaml:"probes,omitempty"`
+	Dependencies []DependencyConfig `yaml:"dependencies,omitempty"`
 	SourcePath string            `yaml:"source_path,omitempty"` // for L0 scan + instrument
 }
 
@@ -141,6 +142,13 @@ type AlertsConfig struct {
 		Token   string  `yaml:"token"`
 		ChatIDs []int64 `yaml:"chat_ids"`
 	} `yaml:"telegram,omitempty"`
+}
+
+// DependencyConfig defines root→downstream suppression relationships.
+// When root metric triggers FATAL/CRITICAL, downstream alerts are suppressed.
+type DependencyConfig struct {
+	Root       string   `yaml:"root"`       // root metric name (e.g. "mysql.connection.alive")
+	Dependents []string `yaml:"dependents"` // downstream metric names to suppress
 }
 
 func Load(path string) (*Config, error) {

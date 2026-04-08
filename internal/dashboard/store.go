@@ -48,6 +48,9 @@ type Store struct {
 	latestAnalysis *ai.AnalysisResult
 	analysisHistory []AnalysisRecord
 
+	// Baseline
+	baseline *ai.BaselineData
+
 	// Trace
 	latestTrace *tracecollector.AnalyzedWindow
 
@@ -126,6 +129,18 @@ func (s *Store) PushAnalysis(result *ai.AnalysisResult, cycleID string) {
 	if len(s.analysisHistory) > 50 {
 		s.analysisHistory = s.analysisHistory[len(s.analysisHistory)-50:]
 	}
+}
+
+func (s *Store) PushBaseline(bl *ai.BaselineData) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.baseline = bl
+}
+
+func (s *Store) GetBaseline() *ai.BaselineData {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.baseline
 }
 
 func (s *Store) PushTrace(trace *tracecollector.AnalyzedWindow) {

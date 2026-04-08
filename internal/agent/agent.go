@@ -11,6 +11,7 @@ import (
 	"github.com/hsdnh/ai-ops-agent/internal/alert"
 	"github.com/hsdnh/ai-ops-agent/internal/analyzer"
 	"github.com/hsdnh/ai-ops-agent/internal/causal"
+	"github.com/hsdnh/ai-ops-agent/internal/changefeed"
 	"github.com/hsdnh/ai-ops-agent/internal/collector"
 	"github.com/hsdnh/ai-ops-agent/internal/dashboard"
 	"github.com/hsdnh/ai-ops-agent/internal/health"
@@ -33,6 +34,9 @@ type Agent struct {
 	alertMgr       *alert.Manager
 	issueTracker   *issue.Tracker
 	analyst         *ai.Analyst                   // L2 AI analysis (nil = disabled)
+	changeFeed      *changefeed.Feed              // change timeline (nil = disabled)
+	incidentAgg     *issue.IncidentAggregator     // parent-child grouping (nil = disabled)
+	silenceMgr      *issue.SilenceManager         // maintenance windows (nil = disabled)
 	causalGraph     *causal.Graph                 // bidirectional causal tracing (nil = disabled)
 	traceReceiver   *tracecollector.TraceReceiver
 	traceTargetAddr string
@@ -187,9 +191,32 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 		a.emit(func(el *dashboard.EventLog) { el.IssueResolved(cycleID, iss.ID, iss.Title) })
 	}
 
+	// Step 6.5: Change feed — poll for deploys/config changes
+	if a.changeFeed != nil {
+		changes := a.changeFeed.Poll(ctx)
+		for _, ch := range changes {
+			a.emit(func(el *dashboard.EventLog) {
+				el.Add(dashboard.Event{Type: "change", Icon: "📦", Message: ch.Summary, Severity: "info", CycleID: cycleID})
+			})
+		}
+	}
+
+	// Step 6.6: Incident aggregation — group related issues
+	if a.incidentAgg != nil {
+		incidents := a.incidentAgg.Aggregate()
+		for _, inc := range incidents {
+			a.logger.Printf("  INCIDENT: %s (%d children)", inc.RootIssue.Title, len(inc.ChildIssues))
+		}
+	}
+
 	// Step 7: Generate notifications from issue state changes
 	var toNotify []types.Alert
 	for _, iss := range newIssues {
+		// Check silence before notifying
+		if a.silenceMgr != nil && a.silenceMgr.IsSilenced(iss.Title, a.projectName, iss.Severity.String()) {
+			a.logger.Printf("  SILENCED: %s", iss.Title)
+			continue
+		}
 		if a.issueTracker.ShouldNotify(iss) {
 			toNotify = append(toNotify, issueToAlert(iss, a.projectName))
 			a.issueTracker.MarkNotified(iss.Fingerprint)
@@ -197,6 +224,9 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 	}
 	// Notify on updates (regression, worsening, data gap recovery)
 	for _, iss := range updatedIssues {
+		if a.silenceMgr != nil && a.silenceMgr.IsSilenced(iss.Title, a.projectName, iss.Severity.String()) {
+			continue
+		}
 		if a.issueTracker.ShouldNotify(iss) {
 			al := issueToAlert(iss, a.projectName)
 			al.Title = fmt.Sprintf("[%s] %s", iss.Status, al.Title)
@@ -224,6 +254,9 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 		a.baselineLearner.Ingest(allMetrics)
 		if a.baselineLearner.IsReady() {
 			aiBaseline = a.baselineLearner.GetAIBaseline()
+			if a.store != nil {
+				a.store.PushBaseline(aiBaseline)
+			}
 		}
 	}
 
@@ -511,6 +544,15 @@ func (a *Agent) SetSyntheticRunner(sr *causal.SyntheticRunner) {
 func (a *Agent) SetInvestigator(inv *investigator.Investigator) {
 	a.autoInvestigator = inv
 }
+
+// SetChangeFeed enables change timeline tracking.
+func (a *Agent) SetChangeFeed(cf *changefeed.Feed) { a.changeFeed = cf }
+
+// SetIncidentAggregator enables parent-child issue grouping.
+func (a *Agent) SetIncidentAggregator(ia *issue.IncidentAggregator) { a.incidentAgg = ia }
+
+// SetSilenceManager enables maintenance window support.
+func (a *Agent) SetSilenceManager(sm *issue.SilenceManager) { a.silenceMgr = sm }
 
 // Shutdown gracefully closes all resources.
 func (a *Agent) Shutdown() {

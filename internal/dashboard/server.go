@@ -127,6 +127,12 @@ func (s *Server) RegisterCausalAPI(registrar CausalGraphRegistrar) {
 	registrar.RegisterToMux(s.mux, s.apiWrap)
 }
 
+// Mux returns the HTTP mux for external route registration.
+func (s *Server) Mux() *http.ServeMux { return s.mux }
+
+// APIWrap returns the CORS+auth middleware for external route registration.
+func (s *Server) APIWrap() func(http.HandlerFunc) http.HandlerFunc { return s.apiWrap }
+
 func (s *Server) Start() error {
 	log.Printf("[dashboard] Starting at http://localhost%s", s.addr)
 	return http.ListenAndServe(s.addr, s.mux)
@@ -212,7 +218,7 @@ func (s *Server) handleMetricNames(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMetricAnnotations(w http.ResponseWriter, r *http.Request) {
 	metrics := s.store.GetMetrics()
-	annotations := AnnotateMetrics(metrics, nil) // TODO: pass baseline
+	annotations := AnnotateMetrics(metrics, s.store.GetBaseline())
 	s.writeJSON(w, annotations)
 }
 

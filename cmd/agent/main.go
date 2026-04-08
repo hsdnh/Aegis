@@ -40,13 +40,13 @@ var (
 )
 
 func main() {
-	configPath := flag.String("config", "config.yaml", "Path to config file")
-	once := flag.Bool("once", false, "Run one cycle and exit")
-	dashAddr := flag.String("dashboard", "127.0.0.1:9090", "Dashboard listen address (empty to disable)")
-	showVersion := flag.Bool("version", false, "Print version and exit")
-	mode := flag.String("mode", "standalone", "Run mode: standalone, worker, master")
-	masterURL := flag.String("master", "", "Master URL for worker mode (e.g. http://10.0.0.1:9090)")
-	nodeName := flag.String("node", "", "Node name (default: hostname)")
+	configPath := flag.String("config", "config.yaml", "配置文件路径")
+	once := flag.Bool("once", false, "运行一次后退出（测试模式）")
+	dashAddr := flag.String("dashboard", "127.0.0.1:9090", "面板监听地址（留空禁用）")
+	showVersion := flag.Bool("version", false, "显示版本信息")
+	mode := flag.String("mode", "standalone", "运行模式: standalone(单机), worker(子节点), master(主节点)")
+	masterURL := flag.String("master", "", "主节点地址，worker 模式必填（如 http://10.0.0.1:9090）")
+	nodeName := flag.String("node", "", "节点名称（默认使用主机名）")
 	flag.Parse()
 
 	if *showVersion {
@@ -104,7 +104,24 @@ func main() {
 	ruleEngine := rule.NewEngine(rules)
 
 	// Build dependency map for alert suppression
-	depMap := rule.DefaultMercariHunterDeps() // TODO: load from config for other projects
+	depMap := rule.NewDependencyMap()
+	if len(cfg.Dependencies) > 0 {
+		for _, d := range cfg.Dependencies {
+			depMap.AddDependency(d.Root, d.Dependents)
+		}
+		log.Printf("Loaded %d dependency rules from config", len(cfg.Dependencies))
+	} else {
+		// Auto-generate from collector config
+		for range cfg.Collectors.MySQL {
+			depMap.AddDependency("mysql.connection.alive", []string{"mysql.check.pending_orders", "mysql.check.failed_orders"})
+		}
+		for range cfg.Collectors.Redis {
+			depMap.AddDependency("redis.connection.alive", []string{"redis.memory.used_bytes", "redis.clients.connected"})
+		}
+		for range cfg.Collectors.HTTP {
+			depMap.AddDependency("http.response.alive", []string{"http.response.latency_ms"})
+		}
+	}
 
 	// Build alerters
 	alertMgr := alert.NewManager()
@@ -295,6 +312,23 @@ func main() {
 			}())
 		}
 		srv.RegisterExtraRoutes(extras)
+
+		// Wire subsystems into agent
+		a.SetSilenceManager(silenceMgr)
+		a.SetChangeFeed(changeFeed)
+		a.SetIncidentAggregator(issue.NewIncidentAggregator(issueTracker))
+
+		// Register AI model switcher
+		aiCfgMgr := dashboard.NewAIConfigManager(cfg.AI.Provider, cfg.AI.Model, cfg.AI.BaseURL, cfg.AI.APIKey, cfg.AI.Enabled)
+		aiCfgMgr.SetSwitchCallback(func(newClient *ai.Client) {
+			analyst := ai.NewAnalyst(newClient, cfg.Project)
+			if cfg.AI.SystemPrompt != "" {
+				analyst.SetDomainKnowledge(cfg.AI.SystemPrompt)
+			}
+			a.SetAnalyst(analyst)
+			log.Printf("AI model hot-switched via dashboard")
+		})
+		aiCfgMgr.RegisterRoutes(srv.Mux(), srv.APIWrap())
 
 		go func() {
 			if err := srv.Start(); err != nil {

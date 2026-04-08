@@ -601,35 +601,35 @@ show_menu() {
     echo ""
 
     print_sep
-    echo -e "${BOLD}${WHITE} Quick Start${NC}"
+    echo -e "${BOLD}${WHITE} 快速开始${NC}"
     print_sep
-    echo -e "  ${GREEN}1${NC}.  Install AI Ops Agent"
-    echo -e "  ${GREEN}2${NC}.  L0 Project Scanner (auto-generate config)"
+    echo -e "  ${GREEN}1${NC}.  安装 AI Ops Agent"
+    echo -e "  ${GREEN}2${NC}.  扫描项目 (自动生成监控配置)"
     echo ""
     print_sep
-    echo -e "${BOLD}${WHITE} Agent Control${NC}"
+    echo -e "${BOLD}${WHITE} 服务控制${NC}"
     print_sep
-    echo -e "  ${GREEN}3${NC}.  Start Agent"
-    echo -e "  ${GREEN}4${NC}.  Stop Agent"
-    echo -e "  ${GREEN}5${NC}.  Restart Agent"
-    echo -e "  ${GREEN}6${NC}.  View Status"
-    echo -e "  ${GREEN}7${NC}.  View Logs (live)"
-    echo -e "  ${GREEN}8${NC}.  Edit Config"
+    echo -e "  ${GREEN}3${NC}.  启动"
+    echo -e "  ${GREEN}4${NC}.  停止"
+    echo -e "  ${GREEN}5${NC}.  重启"
+    echo -e "  ${GREEN}6${NC}.  查看状态"
+    echo -e "  ${GREEN}7${NC}.  查看日志 (实时)"
+    echo -e "  ${GREEN}8${NC}.  编辑配置"
     echo ""
     print_sep
-    echo -e "${BOLD}${WHITE} SDK Probe Management${NC}"
+    echo -e "${BOLD}${WHITE} SDK 探针管理${NC}"
     print_sep
-    echo -e "  ${GREEN}9${NC}.  Install SDK Probes (deep tracing)"
-    echo -e "  ${GREEN}10${NC}. Strip SDK Probes (restore code)"
+    echo -e "  ${GREEN}9${NC}.  安装探针 (深度代码追踪)"
+    echo -e "  ${GREEN}10${NC}. 卸载探针 (还原源码)"
     echo ""
     print_sep
-    echo -e "${BOLD}${WHITE} Maintenance${NC}"
+    echo -e "${BOLD}${WHITE} 维护${NC}"
     print_sep
-    echo -e "  ${GREEN}11${NC}. Update Agent"
-    echo -e "  ${RED}12${NC}. Uninstall Agent"
+    echo -e "  ${GREEN}11${NC}. 更新版本"
+    echo -e "  ${RED}12${NC}. 完全卸载"
     echo ""
     print_sep
-    echo -e "  ${GREEN}0${NC}.  Exit"
+    echo -e "  ${GREEN}0${NC}.  退出"
     print_sep
     echo ""
 }
