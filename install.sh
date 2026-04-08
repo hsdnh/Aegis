@@ -2,12 +2,15 @@
 #
 # AI Ops Agent — One-Line Installer & Manager
 #
-# Usage:
-#   curl -sS https://raw.githubusercontent.com/aiopsagent/ai-ops-agent/main/install.sh | bash
+# 一键安装（下载并进入交互式菜单）:
+#   bash <(curl -sS https://raw.githubusercontent.com/hsdnh/ai-ops-agent/main/install.sh)
 #
-# Or download and run:
-#   curl -sS -O https://raw.githubusercontent.com/aiopsagent/ai-ops-agent/main/install.sh
-#   chmod +x install.sh && ./install.sh
+# 或两步安装:
+#   curl -sS -O https://raw.githubusercontent.com/hsdnh/ai-ops-agent/main/install.sh
+#   chmod +x install.sh && sudo ./install.sh
+#
+# 非交互式快速安装（默认配置）:
+#   curl -sS https://raw.githubusercontent.com/hsdnh/ai-ops-agent/main/install.sh | bash -s -- install
 
 set -e
 
