@@ -59,15 +59,16 @@ func NewClientWithURL(provider Provider, apiKey, model, baseURL string) *Client 
 		}
 	}
 
-	// Auto-detect default model — always default to the strongest available
+	// Auto-detect default model — strongest available per provider
+	// User can always override via config `model:` field
 	if c.model == "" {
 		switch provider {
 		case ProviderClaude:
-			c.model = "claude-sonnet-4-20250514"
+			c.model = "claude-opus-4-20250514"
 		case ProviderOpenAI:
-			c.model = "gpt-4o"
+			c.model = "o3-2025-04-16"
 		case ProviderOpenAICompat:
-			c.model = "gpt-4o" // user should override via config
+			c.model = "gpt-4o" // placeholder — user must set actual model name
 		}
 	}
 
