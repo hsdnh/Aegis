@@ -21,6 +21,7 @@ import (
 	"github.com/hsdnh/ai-ops-agent/internal/dashboard"
 	"github.com/hsdnh/ai-ops-agent/internal/health"
 	"github.com/hsdnh/ai-ops-agent/internal/healthcheck"
+	"github.com/hsdnh/ai-ops-agent/internal/investigator"
 	"github.com/hsdnh/ai-ops-agent/internal/issue"
 	"github.com/hsdnh/ai-ops-agent/internal/rule"
 	"github.com/hsdnh/ai-ops-agent/internal/scanner"
@@ -199,6 +200,21 @@ func main() {
 
 	// Setup expectation model
 	a.SetExpectationModel(causal.NewExpectationModel(50))
+
+	// Setup autonomous investigator (if AI enabled)
+	if aiClient != nil {
+		creds := investigator.NewCredentials()
+		// Auto-load credentials from collector config
+		if len(cfg.Collectors.MySQL) > 0 {
+			creds.SetMySQL(cfg.Collectors.MySQL[0].DSN)
+		}
+		if len(cfg.Collectors.Redis) > 0 {
+			creds.SetRedis(cfg.Collectors.Redis[0].Addr, cfg.Collectors.Redis[0].Password)
+		}
+		inv := investigator.New(aiClient, creds)
+		a.SetInvestigator(inv)
+		log.Printf("Autonomous investigator enabled (auto-mode)")
+	}
 
 	// Setup dashboard
 	var store *dashboard.Store

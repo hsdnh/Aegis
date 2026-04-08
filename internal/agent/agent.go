@@ -14,6 +14,7 @@ import (
 	"github.com/hsdnh/ai-ops-agent/internal/collector"
 	"github.com/hsdnh/ai-ops-agent/internal/dashboard"
 	"github.com/hsdnh/ai-ops-agent/internal/health"
+	"github.com/hsdnh/ai-ops-agent/internal/investigator"
 	"github.com/hsdnh/ai-ops-agent/internal/issue"
 	"github.com/hsdnh/ai-ops-agent/internal/rule"
 	"github.com/hsdnh/ai-ops-agent/internal/sanitize"
@@ -43,6 +44,7 @@ type Agent struct {
 	expectModel     *causal.ExpectationModel       // trace pattern learning (nil = disabled)
 	shadowVerifier  *causal.ShadowVerifier         // independent data verification (nil = disabled)
 	syntheticRunner *causal.SyntheticRunner         // active probes (nil = disabled)
+	autoInvestigator *investigator.Investigator     // autonomous investigation (nil = disabled)
 	logger          *log.Logger
 	prevAlertCount  int
 }
@@ -327,6 +329,35 @@ func (a *Agent) RunOnce(ctx context.Context) (*types.Snapshot, error) {
 		}
 	}
 
+	// Step 10.3: Autonomous investigation for high-severity anomalies
+	if a.autoInvestigator != nil && len(newIssues) > 0 {
+		for _, iss := range newIssues {
+			if iss.Severity >= types.SeverityCritical {
+				a.logger.Printf("Auto-investigating: %s", iss.Title)
+				a.emit(func(el *dashboard.EventLog) {
+					el.Add(dashboard.Event{Type: "investigate", Icon: "🕵️",
+						Message: "Auto-investigating: " + iss.Title, Severity: "info", CycleID: cycleID})
+				})
+				var evidence []string
+				for _, ev := range iss.Evidence {
+					evidence = append(evidence, ev.Description)
+				}
+				inv := a.autoInvestigator.Investigate(ctx, iss.Title+": "+iss.Summary, evidence)
+				if inv.RootCause != "" {
+					iss.RootCause = inv.RootCause
+					iss.Suggestions = inv.Suggestions
+					iss.Confidence = inv.Confidence
+				}
+				a.emit(func(el *dashboard.EventLog) {
+					el.Add(dashboard.Event{Type: "investigate", Icon: "🕵️",
+						Message:  fmt.Sprintf("Investigation complete: %s (%.0f%%)", inv.RootCause, inv.Confidence*100),
+						Details:  inv.Conclusion, Severity: "info", CycleID: cycleID})
+				})
+				break
+			}
+		}
+	}
+
 	// Step 10.5: Causal chains enrich Issues with root cause code location
 	if a.causalGraph != nil {
 		chains := a.causalGraph.TraceAllAnomalies(snapshot)
@@ -474,6 +505,11 @@ func (a *Agent) SetShadowVerifier(sv *causal.ShadowVerifier) {
 // SetSyntheticRunner enables active health probes.
 func (a *Agent) SetSyntheticRunner(sr *causal.SyntheticRunner) {
 	a.syntheticRunner = sr
+}
+
+// SetInvestigator enables autonomous AI investigation on anomalies.
+func (a *Agent) SetInvestigator(inv *investigator.Investigator) {
+	a.autoInvestigator = inv
 }
 
 // Shutdown gracefully closes all resources.
