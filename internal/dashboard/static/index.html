@@ -185,6 +185,22 @@ input:focus{border-color:var(--accent)}
   <div class="pc" id="logs-body" style="max-height:200px;font-family:monospace;font-size:11px"><div class="emp">暂无错误日志</div></div>
 </div>
 
+<!-- 配置编辑 -->
+<div class="p g4">
+  <div class="ph" onclick="toggleConfigEditor()"><span class="pt">📝 配置编辑</span><span class="pb">点击展开</span></div>
+  <div id="config-panel" style="display:none">
+    <div style="padding:8px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)">
+      <span id="config-info" style="font-size:11px;color:var(--muted)">加载中...</span>
+      <div style="display:flex;gap:6px">
+        <button class="btn" onclick="loadConfig()">刷新</button>
+        <button class="btn" onclick="saveConfig()" style="background:var(--accent);color:#fff;border-color:var(--accent)">保存并重载</button>
+      </div>
+    </div>
+    <textarea id="config-editor" style="width:100%;min-height:400px;background:var(--bg);color:var(--text);border:none;padding:12px 16px;font-family:'Cascadia Code','Fira Code',monospace;font-size:12px;line-height:1.6;resize:vertical;outline:none;tab-size:2" spellcheck="false"></textarea>
+    <div id="config-msg" style="display:none;padding:8px 16px;font-size:12px"></div>
+  </div>
+</div>
+
 <!-- 系统管理 -->
 <div class="p g4">
   <div class="ph"><span class="pt">⚙️ 系统管理</span></div>
@@ -424,6 +440,36 @@ async function sendChat(){
   catch(e){const el=document.getElementById('chat-loading');if(el)el.querySelector('.chat-b').innerHTML='<span style="color:var(--red)">网络错误</span>'}
   chatBusy=false;m.scrollTop=m.scrollHeight;
 }
+
+// === 配置编辑器 ===
+function toggleConfigEditor(){
+  const p=document.getElementById('config-panel');
+  p.style.display=p.style.display==='none'?'block':'none';
+  if(p.style.display==='block')loadConfig();
+}
+async function loadConfig(){
+  const d=await F('/api/config/read');if(!d)return;
+  if(d.error){document.getElementById('config-editor').value='# 错误: '+d.error;return}
+  document.getElementById('config-editor').value=d.content;
+  document.getElementById('config-info').textContent=`${d.path} | ${d.size} 字节 | 修改于 ${d.modified}`;
+}
+async function saveConfig(){
+  const content=document.getElementById('config-editor').value;
+  if(!content.trim()){alert('配置内容不能为空');return}
+  const msg=document.getElementById('config-msg');
+  msg.style.display='block';msg.textContent='保存中...';msg.style.color='var(--text2)';
+  const d=await P('/api/config/save',{content});
+  if(d.error){msg.textContent='❌ '+d.error;msg.style.color='var(--red)'}
+  else{msg.textContent='✅ '+(d.message||'已保存');msg.style.color='var(--green)'}
+  setTimeout(()=>{msg.style.display='none'},5000);
+}
+// Tab key support in textarea
+document.addEventListener('DOMContentLoaded',()=>{
+  const ta=document.getElementById('config-editor');
+  if(ta)ta.addEventListener('keydown',e=>{
+    if(e.key==='Tab'){e.preventDefault();const s=ta.selectionStart,end=ta.selectionEnd;ta.value=ta.value.substring(0,s)+'  '+ta.value.substring(end);ta.selectionStart=ta.selectionEnd=s+2}
+  });
+});
 
 // === AI 模型切换 ===
 let aiPresets=[];

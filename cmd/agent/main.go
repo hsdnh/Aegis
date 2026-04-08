@@ -330,6 +330,10 @@ func main() {
 		})
 		aiCfgMgr.RegisterRoutes(srv.Mux(), srv.APIWrap())
 
+		// Register config editor
+		cfgEditor := dashboard.NewConfigEditor(*configPath, nil) // nil = restart required
+		cfgEditor.RegisterRoutes(srv.Mux(), srv.APIWrap())
+
 		go func() {
 			if err := srv.Start(); err != nil {
 				log.Printf("Dashboard server error: %v", err)
