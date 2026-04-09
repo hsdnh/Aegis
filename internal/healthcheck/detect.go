@@ -93,6 +93,12 @@ func scanDir(dir string, maxDepth int, projects *[]DetectedProject, seen map[str
 }
 
 func detectLanguage(dir string) string {
+	// Skip the agent itself
+	base := filepath.Base(dir)
+	if base == "Aegis" || base == "ai-ops-agent" {
+		return ""
+	}
+
 	// Go project
 	if fileExists(filepath.Join(dir, "go.mod")) {
 		return "go"
