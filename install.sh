@@ -364,8 +364,24 @@ detect_project_config() {
         fi
     done
 
-    # Find log files
-    if [ -n "$DETECTED_SOURCE_PATH" ]; then
+    # Find log source: prefer systemd service, fallback to log files
+    DETECTED_LOG_TYPE="file"
+    DETECTED_LOG_UNIT=""
+    DETECTED_LOG_PATH=""
+
+    if [ -n "$DETECTED_PROJECT" ]; then
+        # Check for systemd service matching project name
+        for svc_name in "$DETECTED_PROJECT" "${DETECTED_PROJECT}-master" "${DETECTED_PROJECT}-worker" "mercari-master" "mercari-worker"; do
+            if systemctl is-active "$svc_name" >/dev/null 2>&1 || systemctl is-enabled "$svc_name" >/dev/null 2>&1; then
+                DETECTED_LOG_TYPE="journalctl"
+                DETECTED_LOG_UNIT="$svc_name"
+                break
+            fi
+        done
+    fi
+
+    # Fallback: find log files
+    if [ "$DETECTED_LOG_TYPE" = "file" ] && [ -n "$DETECTED_SOURCE_PATH" ]; then
         DETECTED_LOG_PATH=$(find "$DETECTED_SOURCE_PATH" -name "*.log" -type f 2>/dev/null | head -1)
     fi
 
@@ -374,7 +390,11 @@ detect_project_config() {
         [ -n "$DETECTED_REDIS_ADDR" ] && print_status "  Redis: $DETECTED_REDIS_ADDR"
         [ -n "$DETECTED_MYSQL_HOST" ] && print_status "  MySQL: $DETECTED_MYSQL_USER@$DETECTED_MYSQL_HOST:$DETECTED_MYSQL_PORT/$DETECTED_MYSQL_DB"
         [ -n "$DETECTED_HTTP_PORT" ] && print_status "  HTTP:  :$DETECTED_HTTP_PORT"
-        [ -n "$DETECTED_LOG_PATH" ] && print_status "  日志:  $DETECTED_LOG_PATH"
+        if [ "$DETECTED_LOG_TYPE" = "journalctl" ]; then
+            print_status "  日志:  journalctl -u $DETECTED_LOG_UNIT"
+        elif [ -n "$DETECTED_LOG_PATH" ]; then
+            print_status "  日志:  $DETECTED_LOG_PATH"
+        fi
     else
         print_warn "未检测到项目配置，使用默认模板"
         DETECTED_PROJECT="my-project"
@@ -442,7 +462,14 @@ $([ -n "$DETECTED_HTTP_AUTH" ] && echo "      auth: \"${DETECTED_HTTP_AUTH}\"")
 HTTP_BLOCK
 else echo "  # http: (未检测到)"; fi)
 
-$(if [ -n "$DETECTED_LOG_PATH" ]; then cat << LOG_BLOCK
+$(if [ "$DETECTED_LOG_TYPE" = "journalctl" ] && [ -n "$DETECTED_LOG_UNIT" ]; then cat << LOG_BLOCK
+  log:
+    - source: journalctl
+      unit: ${DETECTED_LOG_UNIT}
+      error_patterns: ["error", "panic", "fatal", "timeout", "connection refused"]
+      minutes: 30
+LOG_BLOCK
+elif [ -n "$DETECTED_LOG_PATH" ]; then cat << LOG_BLOCK
   log:
     - source: file
       file_path: "${DETECTED_LOG_PATH}"

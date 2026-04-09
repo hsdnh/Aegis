@@ -5,6 +5,7 @@ package healthcheck
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -18,7 +19,8 @@ type ExtractedConfig struct {
 	MySQL       []MySQLInfo     `json:"mysql,omitempty"`
 	HTTP        []HTTPInfo      `json:"http,omitempty"`
 	LogPaths    []string        `json:"log_paths,omitempty"`
-	EnvFiles    []string        `json:"env_files"` // which files we read from
+	LogSources  []LogSource     `json:"log_sources,omitempty"`
+	EnvFiles    []string        `json:"env_files"`
 }
 
 type RedisInfo struct {
@@ -70,6 +72,7 @@ func AutoExtractConfig(projectPath string) *ExtractedConfig {
 	}
 
 	// Find log directories
+	cfg.LogSources = findLogSources(projectPath)
 	cfg.LogPaths = findLogPaths(projectPath)
 
 	return cfg
@@ -288,10 +291,27 @@ func extractHTTP(content string, cfg *ExtractedConfig) {
 	}
 }
 
-// --- Log path detection ---
+// LogSource describes how to collect logs for this project.
+type LogSource struct {
+	Type      string `json:"type"` // "journalctl", "file", "docker"
+	Unit      string `json:"unit,omitempty"`
+	FilePath  string `json:"file_path,omitempty"`
+	Container string `json:"container,omitempty"`
+}
 
-func findLogPaths(root string) []string {
-	var paths []string
+// --- Log source detection ---
+
+func findLogSources(root string) []LogSource {
+	var sources []LogSource
+
+	// 1. Check systemd services first (most reliable on Linux)
+	projectName := strings.ToLower(filepath.Base(root))
+	systemdUnits := findSystemdUnits(projectName)
+	for _, unit := range systemdUnits {
+		sources = append(sources, LogSource{Type: "journalctl", Unit: unit})
+	}
+
+	// 2. Check for actual log files in project dirs
 	candidates := []string{
 		filepath.Join(root, "logs"),
 		filepath.Join(root, "log"),
@@ -300,13 +320,74 @@ func findLogPaths(root string) []string {
 	}
 	for _, c := range candidates {
 		if info, err := os.Stat(c); err == nil && info.IsDir() {
-			// Find actual log files
 			entries, _ := os.ReadDir(c)
 			for _, e := range entries {
 				if !e.IsDir() && (strings.HasSuffix(e.Name(), ".log") || strings.HasSuffix(e.Name(), ".out")) {
-					paths = append(paths, filepath.Join(c, e.Name()))
+					sources = append(sources, LogSource{
+						Type:     "file",
+						FilePath: filepath.Join(c, e.Name()),
+					})
 				}
 			}
+		}
+	}
+
+	// 3. Check for docker containers
+	if dockerContainers := findDockerContainers(projectName); len(dockerContainers) > 0 {
+		for _, c := range dockerContainers {
+			sources = append(sources, LogSource{Type: "docker", Container: c})
+		}
+	}
+
+	return sources
+}
+
+func findSystemdUnits(projectName string) []string {
+	var units []string
+	// Try common service name patterns
+	candidates := []string{
+		projectName,
+		projectName + "-master",
+		projectName + "-worker",
+		strings.ReplaceAll(projectName, "-", "_"),
+	}
+
+	for _, name := range candidates {
+		// Check if unit exists and is loaded
+		out, err := execCmd("systemctl", "is-active", name+".service")
+		if err == nil && (strings.TrimSpace(out) == "active" || strings.TrimSpace(out) == "inactive") {
+			units = append(units, name)
+		}
+	}
+	return units
+}
+
+func findDockerContainers(projectName string) []string {
+	out, err := execCmd("docker", "ps", "--format", "{{.Names}}")
+	if err != nil {
+		return nil
+	}
+	var matched []string
+	for _, name := range strings.Split(strings.TrimSpace(out), "\n") {
+		if name != "" && strings.Contains(strings.ToLower(name), projectName) {
+			matched = append(matched, name)
+		}
+	}
+	return matched
+}
+
+func execCmd(name string, args ...string) (string, error) {
+	out, err := exec.Command(name, args...).Output()
+	return string(out), err
+}
+
+// Legacy helper for backward compat
+func findLogPaths(root string) []string {
+	sources := findLogSources(root)
+	var paths []string
+	for _, s := range sources {
+		if s.FilePath != "" {
+			paths = append(paths, s.FilePath)
 		}
 	}
 	return paths
@@ -381,13 +462,28 @@ func (ec *ExtractedConfig) ToYAML() string {
 		}
 	}
 
-	if len(ec.LogPaths) > 0 {
+	if len(ec.LogSources) > 0 {
+		sb.WriteString("  log:\n")
+		for _, ls := range ec.LogSources {
+			switch ls.Type {
+			case "journalctl":
+				sb.WriteString(fmt.Sprintf("    - source: journalctl\n"))
+				sb.WriteString(fmt.Sprintf("      unit: %s\n", ls.Unit))
+			case "file":
+				sb.WriteString(fmt.Sprintf("    - source: file\n"))
+				sb.WriteString(fmt.Sprintf("      file_path: \"%s\"\n", ls.FilePath))
+			case "docker":
+				sb.WriteString(fmt.Sprintf("    - source: docker\n"))
+				sb.WriteString(fmt.Sprintf("      container: %s\n", ls.Container))
+			}
+			sb.WriteString("      error_patterns:\n        - error\n        - panic\n        - fatal\n        - timeout\n      minutes: 30\n")
+		}
+	} else if len(ec.LogPaths) > 0 {
 		sb.WriteString("  log:\n")
 		for _, lp := range ec.LogPaths {
 			sb.WriteString(fmt.Sprintf("    - source: file\n"))
 			sb.WriteString(fmt.Sprintf("      file_path: \"%s\"\n", lp))
-			sb.WriteString("      error_patterns: [\"error\", \"panic\", \"fatal\", \"timeout\"]\n")
-			sb.WriteString("      minutes: 30\n")
+			sb.WriteString("      error_patterns:\n        - error\n        - panic\n        - fatal\n        - timeout\n      minutes: 30\n")
 		}
 	}
 
