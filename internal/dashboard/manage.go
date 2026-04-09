@@ -106,6 +106,14 @@ func (m *ManageService) InstallProbes(ctx context.Context) (*TaskResult, error) 
 		StartedAt: time.Now(),
 	}
 
+	// Auto-backup before instrument (safety net)
+	bm := NewBackupManager("")
+	if backup, err := bm.Backup(m.sourcePath); err != nil {
+		m.logEvent("⚠️", "Backup failed: "+err.Error()+" — continuing anyway", "warning")
+	} else {
+		m.logEvent("💾", fmt.Sprintf("Auto-backup created: %s (%.1f MB)", backup.Path, backup.SizeMB), "info")
+	}
+
 	m.logEvent("🔧", "Installing SDK probes into: "+m.sourcePath, "info")
 
 	cmd := exec.CommandContext(ctx, m.agentBin, "instrument", m.sourcePath+"/...")

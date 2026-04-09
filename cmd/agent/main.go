@@ -343,6 +343,10 @@ func main() {
 		cfgEditor := dashboard.NewConfigEditor(*configPath, nil) // nil = restart required
 		cfgEditor.RegisterRoutes(srv.Mux(), srv.APIWrap())
 
+		// Register backup/restore
+		backupMgr := dashboard.NewBackupManager("")
+		backupMgr.RegisterRoutes(srv.Mux(), srv.APIWrap(), func() string { return cfg.SourcePath })
+
 		go func() {
 			if err := srv.Start(); err != nil {
 				log.Printf("Dashboard server error: %v", err)

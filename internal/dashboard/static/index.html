@@ -231,6 +231,8 @@ input:focus{border-color:var(--accent)}
           <button class="btn" onclick="mgmtAction('probes/install')">🔧 安装探针</button>
           <button class="btn dn" onclick="mgmtAction('probes/strip')">🧹 卸载探针</button>
           <button class="btn" onclick="triggerTrace()">🔬 追踪(10秒)</button>
+          <button class="btn" onclick="createBackup()">💾 备份源码</button>
+          <button class="btn" onclick="restoreBackup()">♻️ 恢复源码</button>
         </div>
       </div>
       <!-- 维护窗口 -->
@@ -439,6 +441,25 @@ async function sendChat(){
     else{el.querySelector('.chat-b').textContent=d.response}}}
   catch(e){const el=document.getElementById('chat-loading');if(el)el.querySelector('.chat-b').innerHTML='<span style="color:var(--red)">网络错误</span>'}
   chatBusy=false;m.scrollTop=m.scrollHeight;
+}
+
+// === 备份/恢复 ===
+async function createBackup(){
+  const out=document.getElementById('mgmt-out');out.style.display='block';out.textContent='创建备份中...\n';
+  const d=await P('/api/backup/create',{});
+  if(d.error){out.textContent+='失败: '+d.error;out.style.color='var(--red)'}
+  else{out.textContent+='备份成功: '+d.path+' ('+d.size_mb.toFixed(1)+'MB)';out.style.color='var(--green)'}
+}
+async function restoreBackup(){
+  const out=document.getElementById('mgmt-out');out.style.display='block';out.textContent='获取备份列表...\n';
+  const list=await F('/api/backup/list');
+  if(!list||list.length===0){out.textContent+='没有可用备份';out.style.color='var(--yellow)';return}
+  const latest=list[list.length-1];
+  if(!confirm('确认从备份恢复源码？\n备份: '+latest.path)){out.style.display='none';return}
+  out.textContent+='恢复中: '+latest.path+'\n';
+  const d=await P('/api/backup/restore',{backup_path:latest.path});
+  if(d.error){out.textContent+='失败: '+d.error;out.style.color='var(--red)'}
+  else{out.textContent+='恢复成功！';out.style.color='var(--green)'}
 }
 
 // === 配置编辑器 ===

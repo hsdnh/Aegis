@@ -151,14 +151,22 @@ func ProcessFile(path string, cfg Config) error {
 		}
 	}
 
-	// Format the result
+	// Validate: the result must compile. If not, SKIP this file entirely.
 	formatted, err := format.Source(result)
 	if err != nil {
-		// If formatting fails, write unformatted (better than losing work)
-		log.Printf("WARNING: gofmt failed for %s, writing unformatted: %v", path, err)
-		formatted = result
+		log.Printf("SKIPPED: %s — instrumented code doesn't compile: %v", path, err)
+		log.Printf("  (original file preserved, not modified)")
+		return nil // don't touch the file
 	}
 
+	// Double-check: re-parse the formatted result
+	fsetCheck := token.NewFileSet()
+	if _, err := parser.ParseFile(fsetCheck, path, formatted, 0); err != nil {
+		log.Printf("SKIPPED: %s — re-parse validation failed: %v", path, err)
+		return nil // don't touch the file
+	}
+
+	// Safe to write — we know it compiles
 	if err := os.WriteFile(path, formatted, 0644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
