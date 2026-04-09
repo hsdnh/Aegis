@@ -266,6 +266,9 @@ func main() {
 	}
 
 	// Setup dashboard
+	// Pre-declare cluster variables (used in dashboard setup below)
+	var masterReceiver *cluster.MasterReceiver
+
 	var store *dashboard.Store
 	var eventLog *dashboard.EventLog
 	if *dashAddr != "" {
@@ -297,6 +300,12 @@ func main() {
 		// Register causal graph API if available
 		if a.CausalGraph() != nil {
 			srv.RegisterCausalAPI(causal.NewGraphAPI(a.CausalGraph()))
+		}
+
+		// Register cluster routes on dashboard mux (master mode)
+		if masterReceiver != nil {
+			masterReceiver.RegisterRoutes(srv.Mux(), srv.APIWrap())
+			log.Printf("Cluster mode: MASTER — accepting worker reports on dashboard port")
 		}
 
 		// Register ALL extra API routes (silence, runbook, investigate, probes, etc.)
@@ -377,21 +386,17 @@ func main() {
 	var nodeRegistry *cluster.NodeRegistry
 	if runMode == cluster.ModeMaster {
 		nodeRegistry = cluster.NewNodeRegistry()
-		receiver := cluster.NewMasterReceiver(nodeRegistry)
-		// Register cluster routes on dashboard mux (if dashboard enabled)
-		if *dashAddr != "" {
-			// Routes already registered via the dashboard server's mux
-			log.Printf("Cluster mode: MASTER — accepting worker reports")
-		} else {
+		masterReceiver = cluster.NewMasterReceiver(nodeRegistry)
+		if *dashAddr == "" {
 			// No dashboard — run cluster receiver on separate port
 			go func() {
-				if err := receiver.Start(":19800"); err != nil {
+				if err := masterReceiver.Start(":19800"); err != nil {
 					log.Printf("Cluster receiver error: %v", err)
 				}
 			}()
 			log.Printf("Cluster mode: MASTER — listening on :19800")
 		}
-		_ = receiver // used via registered routes
+		// If dashboard enabled, routes will be registered after server creation below
 	}
 
 	if *once {
