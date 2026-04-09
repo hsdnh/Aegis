@@ -211,4 +211,25 @@ func (s *Server) RegisterExtraRoutes(extras ExtraServices) {
 		projects := healthcheck.DetectProjects()
 		s.writeJSON(rw, projects)
 	}))
+
+	// --- Auto-extract config from detected project ---
+	s.mux.HandleFunc("/api/detect/config", w(func(rw http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("path")
+		if path == "" {
+			// Auto-detect first project
+			projects := healthcheck.DetectProjects()
+			if len(projects) > 0 {
+				path = projects[0].Path
+			}
+		}
+		if path == "" {
+			s.writeJSON(rw, map[string]string{"error": "no project found"})
+			return
+		}
+		extracted := healthcheck.AutoExtractConfig(path)
+		s.writeJSON(rw, map[string]interface{}{
+			"extracted": extracted,
+			"yaml":      extracted.ToYAML(),
+		})
+	}))
 }

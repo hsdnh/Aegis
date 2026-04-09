@@ -309,49 +309,186 @@ install_from_source() {
     rm -rf "$TMP_DIR"
 }
 
+detect_project_config() {
+    # Auto-scan for project .env files to extract Redis/MySQL/HTTP config
+    print_info "自动扫描项目配置..."
+
+    # Find .env files in common locations
+    ENV_FILES=$(find /opt /root /home /srv -maxdepth 4 -name "*.env" -not -path "*/.git/*" -not -path "*/node_modules/*" -not -path "*/ai-ops-agent/*" -not -path "*/Aegis/*" 2>/dev/null | head -10)
+
+    DETECTED_PROJECT=""
+    DETECTED_REDIS_ADDR=""
+    DETECTED_REDIS_PASS=""
+    DETECTED_REDIS_PREFIX=""
+    DETECTED_MYSQL_HOST=""
+    DETECTED_MYSQL_PORT="3306"
+    DETECTED_MYSQL_USER=""
+    DETECTED_MYSQL_PASS=""
+    DETECTED_MYSQL_DB=""
+    DETECTED_HTTP_PORT=""
+    DETECTED_ADMIN_USER=""
+    DETECTED_ADMIN_PASS=""
+    DETECTED_SOURCE_PATH=""
+    DETECTED_LOG_PATH=""
+
+    for envf in $ENV_FILES; do
+        print_info "发现配置文件: $envf"
+        DETECTED_SOURCE_PATH=$(dirname $(dirname "$envf"))
+
+        # Extract values
+        while IFS= read -r line; do
+            line=$(echo "$line" | sed 's/#.*//' | xargs)
+            [ -z "$line" ] && continue
+            key=$(echo "$line" | cut -d= -f1 | xargs)
+            val=$(echo "$line" | cut -d= -f2- | xargs | sed "s/^[\"']//;s/[\"']$//")
+
+            case "$key" in
+                *REDIS_ADDR*|*REDIS_HOST*) DETECTED_REDIS_ADDR="$val" ;;
+                *REDIS_PASS*) DETECTED_REDIS_PASS="$val" ;;
+                *REDIS_PREFIX*) DETECTED_REDIS_PREFIX="$val" ;;
+                *MYSQL_HOST*|*DB_HOST*) DETECTED_MYSQL_HOST="$val" ;;
+                *MYSQL_PORT*|*DB_PORT*) DETECTED_MYSQL_PORT="$val" ;;
+                *MYSQL_USER*|*DB_USER*) DETECTED_MYSQL_USER="$val" ;;
+                *MYSQL_PASS*|*DB_PASS*) DETECTED_MYSQL_PASS="$val" ;;
+                *MYSQL_DB*|*DB_NAME*|*DATABASE*) DETECTED_MYSQL_DB="$val" ;;
+                *LISTEN*|*HTTP_PORT*|*API_PORT*) DETECTED_HTTP_PORT=$(echo "$val" | sed 's/^://') ;;
+                *ADMIN_USER*) DETECTED_ADMIN_USER="$val" ;;
+                *ADMIN_PASS*) DETECTED_ADMIN_PASS="$val" ;;
+            esac
+        done < "$envf"
+
+        # If we found Redis or MySQL, use this project
+        if [ -n "$DETECTED_REDIS_ADDR" ] || [ -n "$DETECTED_MYSQL_HOST" ]; then
+            DETECTED_PROJECT=$(basename "$DETECTED_SOURCE_PATH")
+            break
+        fi
+    done
+
+    # Find log files
+    if [ -n "$DETECTED_SOURCE_PATH" ]; then
+        DETECTED_LOG_PATH=$(find "$DETECTED_SOURCE_PATH" -name "*.log" -type f 2>/dev/null | head -1)
+    fi
+
+    if [ -n "$DETECTED_PROJECT" ]; then
+        print_status "检测到项目: $DETECTED_PROJECT"
+        [ -n "$DETECTED_REDIS_ADDR" ] && print_status "  Redis: $DETECTED_REDIS_ADDR"
+        [ -n "$DETECTED_MYSQL_HOST" ] && print_status "  MySQL: $DETECTED_MYSQL_USER@$DETECTED_MYSQL_HOST:$DETECTED_MYSQL_PORT/$DETECTED_MYSQL_DB"
+        [ -n "$DETECTED_HTTP_PORT" ] && print_status "  HTTP:  :$DETECTED_HTTP_PORT"
+        [ -n "$DETECTED_LOG_PATH" ] && print_status "  日志:  $DETECTED_LOG_PATH"
+    else
+        print_warn "未检测到项目配置，使用默认模板"
+        DETECTED_PROJECT="my-project"
+    fi
+}
+
 generate_config() {
+    # Auto-detect first
+    detect_project_config
+
+    # Add port to Redis addr if missing
+    if [ -n "$DETECTED_REDIS_ADDR" ] && ! echo "$DETECTED_REDIS_ADDR" | grep -q ":"; then
+        DETECTED_REDIS_ADDR="${DETECTED_REDIS_ADDR}:6379"
+    fi
+
+    # Build MySQL DSN
+    DETECTED_MYSQL_DSN=""
+    if [ -n "$DETECTED_MYSQL_HOST" ] && [ -n "$DETECTED_MYSQL_USER" ]; then
+        DETECTED_MYSQL_DSN="${DETECTED_MYSQL_USER}:${DETECTED_MYSQL_PASS}@tcp(${DETECTED_MYSQL_HOST}:${DETECTED_MYSQL_PORT})/${DETECTED_MYSQL_DB}"
+    fi
+
+    # Build HTTP URL
+    DETECTED_HTTP_URL=""
+    DETECTED_HTTP_AUTH=""
+    if [ -n "$DETECTED_HTTP_PORT" ]; then
+        DETECTED_HTTP_URL="http://127.0.0.1:${DETECTED_HTTP_PORT}"
+        if [ -n "$DETECTED_ADMIN_USER" ]; then
+            DETECTED_HTTP_AUTH="basic:${DETECTED_ADMIN_USER}:${DETECTED_ADMIN_PASS}"
+        fi
+    fi
+
     cat > "$CONFIG_FILE" << YAML
 # AI Ops Agent 配置文件
 # 安装时间: $(date '+%Y-%m-%d %H:%M:%S')
+# 自动检测项目: ${DETECTED_PROJECT}
 
-project: my-project
-schedule: "*/30 * * * *"
+project: ${DETECTED_PROJECT}
+source_path: "${DETECTED_SOURCE_PATH}"
+schedule: "*/5 * * * *"
 
 collectors:
-  # Redis 监控 (取消注释并填写地址)
-  # redis:
-  #   - addr: "127.0.0.1:6379"
-  #     password: ""
-  #     checks:
-  #       - key_pattern: "queue:*:pending"
-  #         threshold: 1000
-  #         alert: "队列堆积"
+$(if [ -n "$DETECTED_REDIS_ADDR" ]; then cat << REDIS_BLOCK
+  redis:
+    - addr: "${DETECTED_REDIS_ADDR}"
+      password: "${DETECTED_REDIS_PASS}"
+      db: 0
+      checks:
+        - key_pattern: "${DETECTED_REDIS_PREFIX:-*}:queue:*:pending"
+          threshold: 1000
+          alert: "队列堆积"
+REDIS_BLOCK
+else echo "  # redis: (未检测到)"; fi)
 
-  # MySQL 监控
-  # mysql:
-  #   - dsn: "user:pass@tcp(127.0.0.1:3306)/dbname"
-  #     checks:
-  #       - query: "SELECT COUNT(*) FROM orders WHERE status='pending'"
-  #         name: "pending_orders"
-  #         threshold: 100
-  #         alert: "订单堆积"
+$(if [ -n "$DETECTED_MYSQL_DSN" ]; then cat << MYSQL_BLOCK
+  mysql:
+    - dsn: "${DETECTED_MYSQL_DSN}"
+MYSQL_BLOCK
+else echo "  # mysql: (未检测到)"; fi)
 
-  # HTTP 健康检查
-  # http:
-  #   - url: "http://localhost:8080/health"
+$(if [ -n "$DETECTED_HTTP_URL" ]; then cat << HTTP_BLOCK
+  http:
+    - url: "${DETECTED_HTTP_URL}"
+$([ -n "$DETECTED_HTTP_AUTH" ] && echo "      auth: \"${DETECTED_HTTP_AUTH}\"")
+      timeout: 10
+HTTP_BLOCK
+else echo "  # http: (未检测到)"; fi)
 
-  # 日志监控
-  # log:
-  #   - source: file
-  #     file_path: "/var/log/app.log"
-  #     error_patterns: ["error", "panic", "fatal"]
-  #     minutes: 30
+$(if [ -n "$DETECTED_LOG_PATH" ]; then cat << LOG_BLOCK
+  log:
+    - source: file
+      file_path: "${DETECTED_LOG_PATH}"
+      error_patterns: ["error", "panic", "fatal", "timeout", "connection refused"]
+      minutes: 30
+LOG_BLOCK
+else echo "  # log: (未检测到日志文件)"; fi)
 
 storage:
   enabled: true
   path: "${DATA_DIR}/aiops.db"
 
-rules: []
+rules:
+$(if [ -n "$DETECTED_REDIS_ADDR" ]; then cat << RULES1
+  - name: "Redis 连接断开"
+    metric_name: "redis.connection.alive"
+    operator: "=="
+    threshold: 0
+    severity: "fatal"
+    message: "Redis 连接断开"
+  - name: "队列堆积"
+    metric_name: "redis.keys.${DETECTED_REDIS_PREFIX:-all}_queue_all_pending.total_length"
+    operator: ">"
+    threshold: 1000
+    severity: "critical"
+    message: "队列堆积超过 1000"
+RULES1
+fi)
+$(if [ -n "$DETECTED_MYSQL_DSN" ]; then cat << RULES2
+  - name: "MySQL 连接断开"
+    metric_name: "mysql.connection.alive"
+    operator: "=="
+    threshold: 0
+    severity: "fatal"
+    message: "MySQL 连接断开"
+RULES2
+fi)
+$(if [ -n "$DETECTED_HTTP_URL" ]; then cat << RULES3
+  - name: "API 无响应"
+    metric_name: "http.response.alive"
+    operator: "=="
+    threshold: 0
+    severity: "fatal"
+    message: "API 服务无响应"
+RULES3
+fi)
 
 ai:
   enabled: ${AI_ENABLED}
