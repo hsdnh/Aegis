@@ -23,6 +23,7 @@ type ManageService struct {
 	sourcePath string // target project source path (if configured)
 	dataDir    string // agent data directory
 	eventLog   *EventLog
+	aiInfo     AIInfo
 }
 
 // ManageStatus represents the current installation state.
@@ -53,6 +54,14 @@ type TaskResult struct {
 	EndedAt   *time.Time `json:"ended_at,omitempty"`
 }
 
+// AIInfo holds AI configuration for display in manage status.
+type AIInfo struct {
+	Provider string
+	Model    string
+	BaseURL  string
+	Enabled  bool
+}
+
 func NewManageService(sourcePath, dataDir string, eventLog *EventLog) *ManageService {
 	agentBin, _ := os.Executable()
 	return &ManageService{
@@ -61,6 +70,13 @@ func NewManageService(sourcePath, dataDir string, eventLog *EventLog) *ManageSer
 		dataDir:    dataDir,
 		eventLog:   eventLog,
 	}
+}
+
+// SetAIInfo updates the AI configuration displayed in manage status.
+func (m *ManageService) SetAIInfo(info AIInfo) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.aiInfo = info
 }
 
 // GetStatus returns the current installation status.
@@ -86,6 +102,14 @@ func (m *ManageService) GetStatus() ManageStatus {
 	// Data directory size
 	status.DataDir = m.dataDir
 	status.DataSizeMB = dirSizeMB(m.dataDir)
+
+	// AI configuration
+	m.mu.Lock()
+	status.AIProvider = m.aiInfo.Provider
+	status.AIModel = m.aiInfo.Model
+	status.AIBaseURL = m.aiInfo.BaseURL
+	status.AIEnabled = m.aiInfo.Enabled
+	m.mu.Unlock()
 
 	return status
 }

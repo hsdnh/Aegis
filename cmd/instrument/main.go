@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -90,4 +91,39 @@ func main() {
 	}
 
 	log.Printf("=== Done. Scanned %d files ===", total)
+
+	// After instrumenting, try to add SDK dependency to go.mod
+	if !*strip && total > 0 {
+		root := strings.TrimSuffix(flag.Args()[0], "/...")
+		if root == "" {
+			root = "."
+		}
+		goModPath := findGoMod(root)
+		if goModPath != "" {
+			log.Printf("Adding SDK dependency to %s...", goModPath)
+			cmd := exec.Command("go", "get", "github.com/hsdnh/Aegis/sdk/probe@latest")
+			cmd.Dir = filepath.Dir(goModPath)
+			cmd.Env = append(os.Environ(),
+				"GOPRIVATE=github.com/hsdnh/Aegis",
+				"GONOSUMCHECK=github.com/hsdnh/Aegis",
+				"GONOSUMDB=github.com/hsdnh/Aegis",
+			)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				log.Printf("WARNING: could not add SDK dep: %v\n%s", err, string(out))
+				log.Printf("Run manually: cd %s && go get github.com/hsdnh/Aegis/sdk/probe", filepath.Dir(goModPath))
+			} else {
+				log.Printf("SDK dependency added successfully")
+			}
+		}
+	}
+}
+
+func findGoMod(dir string) string {
+	for d := dir; d != "/" && d != "."; d = filepath.Dir(d) {
+		p := filepath.Join(d, "go.mod")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
 }

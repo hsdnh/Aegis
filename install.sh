@@ -236,7 +236,15 @@ install_agent() {
     if [ ! -f "$CONFIG_FILE" ]; then
         generate_config
     else
-        print_warn "Config exists: $CONFIG_FILE (not overwritten)"
+        print_warn "Config exists: $CONFIG_FILE"
+        read -p "  是否重新生成配置？会备份旧配置 (y/N): " regen
+        if [ "$regen" = "y" ] || [ "$regen" = "Y" ]; then
+            cp "$CONFIG_FILE" "${CONFIG_FILE}.bak.$(date +%Y%m%d-%H%M%S)"
+            print_status "旧配置已备份"
+            generate_config
+        else
+            print_info "保留现有配置"
+        fi
     fi
 
     # Create systemd service with user's choices
@@ -287,13 +295,24 @@ ENVEOF
 }
 
 install_from_source() {
+    # Ensure Go is in PATH (may have been installed previously but not in current shell)
+    export PATH=$PATH:/usr/local/go/bin
+
     # Check Go
     if ! command -v go &> /dev/null; then
         print_info "Installing Go..."
-        curl -fsSL https://go.dev/dl/go1.22.5.linux-${ARCH}.tar.gz | tar -C /usr/local -xzf -
-        export PATH=$PATH:/usr/local/go/bin
-        print_status "Go installed"
+        GO_VERSION="1.22.5"
+        curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" | tar -C /usr/local -xzf -
+        print_status "Go ${GO_VERSION} installed"
+
+        # Persist PATH for future sessions
+        if ! grep -q '/usr/local/go/bin' /etc/profile.d/go.sh 2>/dev/null; then
+            echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/go.sh
+            chmod +x /etc/profile.d/go.sh
+        fi
     fi
+
+    print_info "Go version: $(go version)"
 
     # Clone and build
     print_info "Cloning repository..."
@@ -301,11 +320,13 @@ install_from_source() {
     git clone --depth 1 "https://github.com/${REPO}.git" "$TMP_DIR" 2>/dev/null
     cd "$TMP_DIR"
 
-    print_info "Building..."
-    CGO_ENABLED=0 go build -o "${INSTALL_DIR}/ai-ops-agent" ./cmd/agent/
-    CGO_ENABLED=0 go build -o "${INSTALL_DIR}/ai-ops-agent-instrument" ./cmd/instrument/
+    print_info "Building agent..."
+    CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=${REPO_TAG:-dev}" -o "${INSTALL_DIR}/ai-ops-agent" ./cmd/agent/
+    print_info "Building instrument tool..."
+    CGO_ENABLED=0 go build -ldflags "-s -w" -o "${INSTALL_DIR}/ai-ops-agent-instrument" ./cmd/instrument/
     print_status "Built from source"
 
+    cd /
     rm -rf "$TMP_DIR"
 }
 

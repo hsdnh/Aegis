@@ -278,6 +278,10 @@ func main() {
 		}
 
 		mgr := dashboard.NewManageService(cfg.SourcePath, "./data", eventLog)
+		mgr.SetAIInfo(dashboard.AIInfo{
+			Provider: cfg.AI.Provider, Model: cfg.AI.Model,
+			BaseURL: cfg.AI.BaseURL, Enabled: cfg.AI.Enabled,
+		})
 		dashToken := os.Getenv("AIOPS_DASHBOARD_TOKEN")
 		srv := dashboard.NewServer(store, *dashAddr, eventLog, chatSvc, mgr, dashToken)
 		if dashToken != "" {
