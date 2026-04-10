@@ -265,10 +265,36 @@ func main() {
 		log.Printf("Autonomous investigator enabled (auto-mode)")
 	}
 
-	// Setup dashboard
-	// Pre-declare cluster variables (used in dashboard setup below)
-	var masterReceiver *cluster.MasterReceiver
+	// Setup cluster mode (must be before dashboard so routes can be registered)
+	runMode := cluster.Mode(*mode)
+	nName := *nodeName
+	if nName == "" {
+		nName = cfg.Project
+	}
+	nodeInfo := cluster.NewNodeInfo(nName, version, runMode)
 
+	var masterReceiver *cluster.MasterReceiver
+	var workerReporter *cluster.WorkerReporter
+	var nodeRegistry *cluster.NodeRegistry
+
+	if runMode == cluster.ModeWorker && *masterURL != "" {
+		workerReporter = cluster.NewWorkerReporter(*masterURL, nodeInfo)
+		log.Printf("Cluster mode: WORKER → reporting to %s", *masterURL)
+	}
+	if runMode == cluster.ModeMaster {
+		nodeRegistry = cluster.NewNodeRegistry()
+		masterReceiver = cluster.NewMasterReceiver(nodeRegistry)
+		if *dashAddr == "" {
+			go func() {
+				if err := masterReceiver.Start(":19800"); err != nil {
+					log.Printf("Cluster receiver error: %v", err)
+				}
+			}()
+			log.Printf("Cluster mode: MASTER — listening on :19800")
+		}
+	}
+
+	// Setup dashboard
 	var store *dashboard.Store
 	var eventLog *dashboard.EventLog
 	if *dashAddr != "" {
@@ -367,36 +393,6 @@ func main() {
 		}()
 
 		a.SetDashboard(store, eventLog)
-	}
-
-	// Setup cluster mode
-	runMode := cluster.Mode(*mode)
-	nName := *nodeName
-	if nName == "" {
-		nName = cfg.Project
-	}
-	nodeInfo := cluster.NewNodeInfo(nName, version, runMode)
-
-	var workerReporter *cluster.WorkerReporter
-	if runMode == cluster.ModeWorker && *masterURL != "" {
-		workerReporter = cluster.NewWorkerReporter(*masterURL, nodeInfo)
-		log.Printf("Cluster mode: WORKER → reporting to %s", *masterURL)
-	}
-
-	var nodeRegistry *cluster.NodeRegistry
-	if runMode == cluster.ModeMaster {
-		nodeRegistry = cluster.NewNodeRegistry()
-		masterReceiver = cluster.NewMasterReceiver(nodeRegistry)
-		if *dashAddr == "" {
-			// No dashboard — run cluster receiver on separate port
-			go func() {
-				if err := masterReceiver.Start(":19800"); err != nil {
-					log.Printf("Cluster receiver error: %v", err)
-				}
-			}()
-			log.Printf("Cluster mode: MASTER — listening on :19800")
-		}
-		// If dashboard enabled, routes will be registered after server creation below
 	}
 
 	if *once {
